@@ -38,7 +38,7 @@ ext_file_status ext_status(const std::filesystem::path& p);
 ext_file_status ext_symlink_status(const std::filesystem::path& p);
 
 /**
- * Extended version of std::file_status
+ * Extended version of std::filesystem::file_status
  */
 class ext_file_status
 {
@@ -121,6 +121,11 @@ private:
     friend ext_file_status ext_symlink_status(const std::filesystem::path& p);
 };
 
+/**
+ * Extended version of std::filesystem::ext_status
+ * \param p path to stat
+ * \return ext_file_status
+ */
 inline ext_file_status ext_status(const std::filesystem::path& p)
 {
     ext_file_status result;
@@ -129,6 +134,11 @@ inline ext_file_status ext_status(const std::filesystem::path& p)
     return result;
 }
 
+/**
+ * Extended version of std::filesystem::ext_symlink_status
+ * \param p path to lstat
+ * \return ext_file_status
+ */
 inline ext_file_status ext_symlink_status(const std::filesystem::path& p)
 {
     ext_file_status result;
