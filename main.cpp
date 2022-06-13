@@ -26,16 +26,6 @@ using namespace std;
 using namespace std::filesystem;
 using namespace boost::program_options;
 
-/*
- * - We shall fail and/or report an error/warning if when listing a directory
- *   or loading a diff file we encounter an unhandled file type (not regular,
- *   directory or symlink).
- *
- * NON-issues: we don't want to handle hardlinks.
- * For us, they're two separate files.
- * MAYBE-issues: shall we handle filesystem loops through symlinks to directories?
- */
-
 bool ls(variables_map& vm)
 {
     string outFileName;
@@ -61,6 +51,7 @@ bool ls(variables_map& vm)
     {
         FileLister fl(getOutputFile());
         fl.listFiles(vm["source"].as<string>());
+        if(fl.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
         return true;
     }
 

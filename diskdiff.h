@@ -116,9 +116,16 @@ public:
      */
     void listFiles(const std::filesystem::path& top);
 
+    /**
+     * \return true if the last listFiles call encountered unsupported file
+     * types
+     */
+    bool unsupportedFilesFound() const { return unsupported; }
+
 private:
     void recursiveListFiles(const std::filesystem::path& p);
     std::ostream& os;
     std::filesystem::path top;
     bool printBreak;
+    bool unsupported=false;
 };

@@ -44,26 +44,30 @@ string hashFile(const path& p)
 //
 
 FilesystemElement::FilesystemElement()
-    : type(file_type::none), permissions(perms::unknown) {}
+    : type(file_type::unknown), permissions(perms::unknown) {}
 
 FilesystemElement::FilesystemElement(const path& p, const path& top)
     : relativePath(p.lexically_relative(top))
 {
     auto s=ext_symlink_status(p);
-    type=s.type();
     permissions=s.permissions();
     user=s.user();
     group=s.group();
     mtime=s.mtime();
-    switch(type)
+    type=s.type();
+    switch(s.type())
     {
         case file_type::regular:
             size=s.file_size();
             hash=hashFile(p);
             break;
+        case file_type::directory:
+            break;
         case file_type::symlink:
             symlinkTarget=read_symlink(p);
             break;
+        default:
+            type=file_type::unknown; //We don't handle other types
     }
 }
 
@@ -195,6 +199,7 @@ void FileLister::listFiles(const path& top)
     if(!is_directory(this->top))
         throw logic_error(top.string()+" is not a directory");
     printBreak=false;
+    unsupported=false;
     recursiveListFiles(this->top);
 }
 
@@ -210,8 +215,18 @@ void FileLister::recursiveListFiles(const path& p)
         if(a.is_directory()==b.is_directory()) return a < b;
         return a.is_directory()>b.is_directory();
     });
-    for(auto& d : de) FilesystemElement(d.path(),top).writeTo(os);
+    for(auto& d : de)
+    {
+        FilesystemElement elem(d.path(),top);
+        elem.writeTo(os);
+        if(elem.type==file_type::unknown) unsupported=true;
+    }
     printBreak=de.empty()==false;
 
-    for(auto& d : de) if(d.is_directory()) recursiveListFiles(d.path());
+    for(auto& d : de)
+    {
+        //NOTE: we don't follow symlinks to directories. This also saves us
+        //from worrying about filesystem loops through directory symlinks.
+        if(d.is_directory() && !d.is_symlink()) recursiveListFiles(d.path());
+    }
 }
