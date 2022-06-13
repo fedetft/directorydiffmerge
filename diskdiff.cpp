@@ -7,6 +7,7 @@
 #include <crypto++/hex.h>
 #include <crypto++/files.h>
 #include <crypto++/filters.h>
+#include "extfs.h"
 #include "diskdiff.h"
 
 using namespace std;
@@ -20,18 +21,6 @@ string hashFile(const path& p)
     FileSource fs(p.string().c_str(),true,
                   new HashFilter(hash,new HexEncoder(new StringSink(result))));
     return result;
-}
-
-//
-// class DirectoryEntry
-//
-
-bool operator< (const DirectoryEntry& a, const DirectoryEntry& b)
-{
-    bool adir=a.s.type()==file_type::directory;
-    bool bdir=b.s.type()==file_type::directory;
-    if(adir==bdir) return a.p < b.p; // Sort alphabetically (case sensitive)...
-    return adir>bdir;                // ...but put directories first
 }
 
 //
@@ -57,24 +46,7 @@ FilesystemElement::FilesystemElement(const path& p, const path& top)
             hash=hashFile(p);
             break;
         case file_type::symlink:
-            symlinkTarget=weakly_canonical(p).lexically_relative(top);
-            break;
-    }
-}
-
-FilesystemElement::FilesystemElement(const DirectoryEntry& de, const path& top)
-    : type(de.s.type()), permissions(de.s.permissions()), user(de.s.user()),
-      group(de.s.group()), mtime(de.s.mtime()),
-      relativePath(de.p.lexically_relative(top))
-{
-    switch(type)
-    {
-        case file_type::regular:
-            size=de.s.file_size();
-            hash=hashFile(de.p);
-            break;
-        case file_type::symlink:
-            symlinkTarget=weakly_canonical(de.p).lexically_relative(top);
+            symlinkTarget=read_symlink(p);
             break;
     }
 }
@@ -206,32 +178,24 @@ void FileLister::listFiles(const path& top)
     this->top=absolute(top);
     if(!is_directory(this->top))
         throw logic_error(top.string()+" is not a directory");
-    breakPrinted=true;
+    printBreak=false;
     recursiveListFiles(this->top);
 }
 
 void FileLister::recursiveListFiles(const path& p)
 {
-    if(breakPrinted==false)
-    {
-        breakPrinted=true;
-        os<<'\n';
-    }
+    if(printBreak) os<<'\n';
 
-    list<DirectoryEntry> de;
-    for(auto& it : directory_iterator(p)) de.push_back(DirectoryEntry(it.path()));
-    de.sort();
-    for(auto d : de)
+    list<directory_entry> de;
+    for(auto& it : directory_iterator(p)) de.push_back(it);
+    de.sort([](const directory_entry& a, const directory_entry& b)->bool
     {
-        FilesystemElement fse(d,top);
-        fse.writeTo(os);
-        breakPrinted=false;
-    }
+        // Sort alphabetically (case sensitive) but put directories first
+        if(a.is_directory()==b.is_directory()) return a < b;
+        return a.is_directory()>b.is_directory();
+    });
+    for(auto& d : de) FilesystemElement(d.path(),top).writeTo(os);
+    printBreak=de.empty()==false;
 
-    for(auto d : de)
-    {
-        // Directories are sorted first, first non directory is enough to quit
-        if(d.s.type()!=file_type::directory) break;
-        recursiveListFiles(d.p);
-    }
+    for(auto& d : de) if(d.is_directory()) recursiveListFiles(d.path());
 }

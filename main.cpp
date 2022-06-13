@@ -11,11 +11,6 @@ using namespace std::filesystem;
 using namespace boost::program_options;
 
 /*
- * TODO list
- * - symlink handling is wrong, the weakly_canonical function resolve multiple
- *   levels of symlinks which is what we don't want. A symlink to another symlink
- *   shall not be flattened into pointing directly to the target file.
- *   Also, for broken symlinks the broken target is not preserved
  * - We shall fail and/or report an error/warning if when listing a directory
  *   or loading a diff file we encounter an unhandled file type (not regular,
  *   directory or symlink).

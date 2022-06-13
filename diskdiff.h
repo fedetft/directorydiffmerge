@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <ostream>
 #include <ctime>
-#include "extfs.h"
 
 /**
  * Computes SHA1 of a file. Only to detect changes, no crypto strength needed
@@ -12,25 +11,6 @@
  * \return a string with the SHA1 hash in ASCII hex digits
  */
 std::string hashFile(const std::filesystem::path& p);
-
-/**
- * Directory entry used when listing directory content
- */
-class DirectoryEntry
-{
-public:
-    explicit DirectoryEntry(const std::filesystem::path& p)
-        : p(p), s(ext_symlink_status(p)) {}
-
-    std::filesystem::path p; ///< Path to the file
-    ext_file_status s;       ///< File information in memory-efficient form
-};
-
-/**
- * Compare function to sort directory entries. it puts directories first and
- * sorts alphabetically otherwise
- */
-bool operator< (const DirectoryEntry& a, const DirectoryEntry& b);
 
 /**
  * This class is used to load/store information about files and directories
@@ -50,14 +30,6 @@ public:
      * \param top top level directory, used to compute relative path
      */
     FilesystemElement(const std::filesystem::path& p,
-                      const std::filesystem::path& top);
-
-    /**
-     * Constructor from DirectoryEntry, used when listing directories
-     * \param de directory entry
-     * \param top top level directory, used to compute relative path
-     */
-    FilesystemElement(const DirectoryEntry& de,
                       const std::filesystem::path& top);
 
     /**
@@ -132,5 +104,5 @@ private:
     void recursiveListFiles(const std::filesystem::path& p);
     std::ostream& os;
     std::filesystem::path top;
-    bool breakPrinted;
+    bool printBreak;
 };
