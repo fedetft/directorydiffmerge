@@ -78,6 +78,11 @@ public:
     time_t mtime() const { return st.st_mtime; }
 
     /**
+     * \return the number of hard links
+     */
+    uintmax_t hard_link_count() const { return st.st_nlink; }
+
+    /**
      * \return the file user string
      */
     std::string user() const { return lookupUser(st.st_uid); }

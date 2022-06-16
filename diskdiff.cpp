@@ -55,6 +55,7 @@ FilesystemElement::FilesystemElement(const path& p, const path& top)
     group=s.group();
     mtime=s.mtime();
     type=s.type();
+    hard_link_count=s.hard_link_count();
     switch(s.type())
     {
         case file_type::regular:
@@ -62,6 +63,7 @@ FilesystemElement::FilesystemElement(const path& p, const path& top)
             hash=hashFile(p);
             break;
         case file_type::directory:
+            dir=true;
             break;
         case file_type::symlink:
             symlinkTarget=read_symlink(p);
@@ -90,10 +92,10 @@ void FilesystemElement::readFrom(const string& diffLine,
     if(!in || permStr.size()!=10) fail("Error reading permission string");
     switch(permStr.at(0))
     {
-        case '-': type=file_type::regular;   break;
-        case 'd': type=file_type::directory; break;
-        case 'l': type=file_type::symlink;   break;
-        case '?': type=file_type::unknown;   break;
+        case '-': type=file_type::regular;   dir=false; break;
+        case 'd': type=file_type::directory; dir=true;  break;
+        case 'l': type=file_type::symlink;   dir=false; break;
+        case '?': type=file_type::unknown;   dir=false; break;
         default: fail("Unrecognized file type");
     }
     int pe=0;
@@ -143,6 +145,8 @@ void FilesystemElement::readFrom(const string& diffLine,
     in>>relativePath;
     if(!in) fail("Error reading path");
     if(in.get()!=EOF) fail("Extra characters at end of line");
+    //Initialize non-written fields to defaults
+    hard_link_count=1;
 }
 
 void FilesystemElement::writeTo(ostream& os)
@@ -189,6 +193,13 @@ void FilesystemElement::writeTo(ostream& os)
     os<<relativePath<<'\n';
 }
 
+bool operator< (const FilesystemElement& a, const FilesystemElement& b)
+{
+    // Sort alphabetically (case sensitive) but put directories first
+    if(a.dir==b.dir) return a.relativePath < b.relativePath;
+    return a.dir > b.dir;
+}
+
 //
 // class FileLister
 //
@@ -207,26 +218,30 @@ void FileLister::recursiveListFiles(const path& p)
 {
     if(printBreak) os<<'\n';
 
-    list<directory_entry> de;
-    for(auto& it : directory_iterator(p)) de.push_back(it);
-    de.sort([](const directory_entry& a, const directory_entry& b)->bool
+    list<FilesystemElement> fe;
+    for(auto& it : directory_iterator(p))
+        fe.push_back(FilesystemElement(it.path(),top));
+    fe.sort();
+    for(auto& e : fe)
     {
-        // Sort alphabetically (case sensitive) but put directories first
-        if(a.is_directory()==b.is_directory()) return a < b;
-        return a.is_directory()>b.is_directory();
-    });
-    for(auto& d : de)
-    {
-        FilesystemElement elem(d.path(),top);
-        elem.writeTo(os);
-        if(elem.type==file_type::unknown) unsupported=true;
+        e.writeTo(os);
+        if(e.type==file_type::unknown)
+        {
+            cerr<<"Warning: "<<e.relativePath<<" has unsupported file type\n";
+            unsupported=true;
+        }
+        if(e.type!=file_type::directory && e.hard_link_count!=1)
+        {
+            cerr<<"Warning: "<<e.relativePath<<" has multiple hardlinks ("<<e.hard_link_count<<")\n";
+            unsupported=true;
+        }
     }
-    printBreak=de.empty()==false;
+    printBreak=fe.empty()==false;
 
-    for(auto& d : de)
+    for(auto& e : fe)
     {
-        //NOTE: we don't follow symlinks to directories. This also saves us
-        //from worrying about filesystem loops through directory symlinks.
-        if(d.is_directory() && !d.is_symlink()) recursiveListFiles(d.path());
+        //NOTE: we list directories, not symlinks to directories. This also
+        //saves us from worrying about filesystem loops through directory symlinks.
+        if(e.dir) recursiveListFiles(top / e.relativePath);
     }
 }

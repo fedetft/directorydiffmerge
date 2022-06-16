@@ -36,7 +36,7 @@ class FilesystemElement
 {
 public:
     /**
-     * Emppty constructor
+     * Empty constructor
      */
     FilesystemElement();
 
@@ -77,6 +77,7 @@ public:
      */
     void writeTo(std::ostream& os);
 
+    //Written/read fields
     std::filesystem::file_type type;    ///< File type (regular, directory, ...)
     std::filesystem::perms permissions; ///< File permissions (rwxrwxrwx)
     std::string user;                   ///< File user (owner)
@@ -86,7 +87,16 @@ public:
     std::string hash;                   ///< SHA1 hash, only if regular file
     std::filesystem::path relativePath; ///< File path relative to top level directory
     std::filesystem::path symlinkTarget;///< Symlink target path, only if symlink
+
+    //Fields that are not written
+    uintmax_t hard_link_count=1;
+    bool dir=false;
 };
+
+/**
+ * Compare operator for sorting
+ */
+bool operator< (const FilesystemElement& a, const FilesystemElement& b);
 
 
 /**
