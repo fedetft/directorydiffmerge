@@ -6,5 +6,8 @@ Design limitations:
   to directories, this also prevents filesystem loops through symlinks.
 
 TODO: does .git directories use hardlinks?
+TODO: handle files that can't be read for permission reasons
+TODO: handle directories that can't be read for permission reasons
+
 
 

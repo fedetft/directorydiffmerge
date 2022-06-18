@@ -77,20 +77,80 @@ public:
      */
     void writeTo(std::ostream& os);
 
-    //Written/read fields
-    std::filesystem::file_type type;    ///< File type (regular, directory, ...)
-    std::filesystem::perms permissions; ///< File permissions (rwxrwxrwx)
-    std::string user;                   ///< File user (owner)
-    std::string group;                  ///< File group
-    time_t mtime=0;                     ///< Modified time
-    off_t size=0;                       ///< Size, only if regular file
-    std::string hash;                   ///< SHA1 hash, only if regular file
-    std::filesystem::path relativePath; ///< File path relative to top level directory
-    std::filesystem::path symlinkTarget;///< Symlink target path, only if symlink
+    /**
+     * \return true if the FilesystemElement is a directory
+     */
+    bool isDirectory() const { return ty==std::filesystem::file_type::directory; }
 
-    //Fields that are not written
-    uintmax_t hard_link_count=1;
-    bool dir=false;
+    /**
+     * \return the type of the FilesystemElement (reguler file, directory, ...)
+     */
+    std::filesystem::file_type type() const { return ty; }
+
+    /**
+     * \return the access permissions
+     */
+    std::filesystem::perms permissions() const { return per; }
+
+    /**
+     * \return the owner (user) of the FilesystemElement as a string
+     */
+    std::string user() const { return us; }
+
+    /**
+     * \return the group of the FilesystemElement as a string
+     */
+    std::string group() const { return gs; }
+
+    /**
+     * \return the last modified time
+     */
+    time_t mtime() const { return mt; }
+
+    /**
+     * \return the file size.
+     * Only valid if the FilesystemElement is a regular file
+     */
+    off_t size() const { return sz; }
+
+    /**
+     * \return the file hash.
+     * Only valid if the FilesystemElement is a regular file
+     */
+    std::string hash() const { return fileHash; }
+
+    /**
+     * \return the path of the FilesystemElement, relative to the top directory
+     */
+    std::filesystem::path relativePath() const { return rp; }
+
+    /**
+     * \return the symlink target.
+     * Only valid if the FilesystemElement is a symlink
+     */
+    std::filesystem::path symlinkTarget() const { return symlink; }
+
+    /**
+     * \return the hardlink count. Note that this information is not saved
+     * in the diff file, so it is only available if the FilesystemElement has
+     * been read from disk.
+     */
+    uintmax_t hardLinkCount() const { return hardLinkCnt; }
+
+private:
+    //Fields that are written to diff files
+    std::filesystem::file_type ty; ///< File type (regular, directory, ...)
+    std::filesystem::perms per;    ///< File permissions (rwxrwxrwx)
+    std::string us;                ///< File user (owner)
+    std::string gs;                ///< File group
+    time_t mt=0;                   ///< Modified time
+    off_t sz=0;                    ///< Size, only if regular file
+    std::string fileHash;          ///< SHA1 hash, only if regular file
+    std::filesystem::path rp;      ///< File path relative to top level directory
+    std::filesystem::path symlink; ///< Symlink target path, only if symlink
+
+    //Fields that are not written to diff files
+    uintmax_t hardLinkCnt=1;
 };
 
 /**

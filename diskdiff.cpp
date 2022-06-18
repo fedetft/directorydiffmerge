@@ -44,32 +44,31 @@ string hashFile(const path& p)
 //
 
 FilesystemElement::FilesystemElement()
-    : type(file_type::unknown), permissions(perms::unknown) {}
+    : ty(file_type::unknown), per(perms::unknown) {}
 
 FilesystemElement::FilesystemElement(const path& p, const path& top)
-    : relativePath(p.lexically_relative(top))
+    : rp(p.lexically_relative(top))
 {
     auto s=ext_symlink_status(p);
-    permissions=s.permissions();
-    user=s.user();
-    group=s.group();
-    mtime=s.mtime();
-    type=s.type();
-    hard_link_count=s.hard_link_count();
+    per=s.permissions();
+    us=s.user();
+    gs=s.group();
+    mt=s.mtime();
+    ty=s.type();
+    hardLinkCnt=s.hard_link_count();
     switch(s.type())
     {
         case file_type::regular:
-            size=s.file_size();
-            hash=hashFile(p);
+            sz=s.file_size();
+            fileHash=hashFile(p);
             break;
         case file_type::directory:
-            dir=true;
             break;
         case file_type::symlink:
-            symlinkTarget=read_symlink(p);
+            symlink=read_symlink(p);
             break;
         default:
-            type=file_type::unknown; //We don't handle other types
+            ty=file_type::unknown; //We don't handle other types
     }
 }
 
@@ -92,10 +91,10 @@ void FilesystemElement::readFrom(const string& diffLine,
     if(!in || permStr.size()!=10) fail("Error reading permission string");
     switch(permStr.at(0))
     {
-        case '-': type=file_type::regular;   dir=false; break;
-        case 'd': type=file_type::directory; dir=true;  break;
-        case 'l': type=file_type::symlink;   dir=false; break;
-        case '?': type=file_type::unknown;   dir=false; break;
+        case '-': ty=file_type::regular;   break;
+        case 'd': ty=file_type::directory; break;
+        case 'l': ty=file_type::symlink;   break;
+        case '?': ty=file_type::unknown;   break;
         default: fail("Unrecognized file type");
     }
     int pe=0;
@@ -111,8 +110,8 @@ void FilesystemElement::readFrom(const string& diffLine,
         if(permTriple[2]=='x') pe |= 0001;
         else if(permTriple[2]!='-') fail("Permissions not correct");
     }
-    permissions=static_cast<perms>(pe);
-    in>>user>>group;
+    per=static_cast<perms>(pe);
+    in>>us>>gs;
     if(!in) fail("Error reading user/group");
     // Time is complicated. The format string "%F %T" always causes the stream
     // fail bit to be set. But expanding %F as %Y-%m-%d works, go figure.
@@ -123,42 +122,42 @@ void FilesystemElement::readFrom(const string& diffLine,
     // of, I decided to only support UTC and check the +0000 string manually
     struct tm t;
     in>>get_time(&t,"%Y-%m-%d %T");
-    mtime=timegm(&t);
-    if(!in || mtime==-1) fail("Error reading mtime");
+    mt=timegm(&t);
+    if(!in || mt==-1) fail("Error reading mtime");
     string tz;
     tz.resize(6);
     in.read(tz.data(),6);
     if(!in || tz!=" +0000") fail("Error reading mtime");
-    switch(type)
+    switch(ty)
     {
         case file_type::regular:
-            in>>size;
+            in>>sz;
             if(!in) fail("Error reading size");
-            in>>hash;
-            if(!in || hash.size()!=40) fail("Error reading hash");
+            in>>fileHash;
+            if(!in || fileHash.size()!=40) fail("Error reading hash");
             break;
         case file_type::symlink:
-            in>>symlinkTarget;
+            in>>symlink;
             if(!in) fail("Error reading symlink target");
             break;
     }
-    in>>relativePath;
+    in>>rp;
     if(!in) fail("Error reading path");
     if(in.get()!=EOF) fail("Extra characters at end of line");
     //Initialize non-written fields to defaults
-    hard_link_count=1;
+    hardLinkCnt=1;
 }
 
 void FilesystemElement::writeTo(ostream& os)
 {
-    switch(type)
+    switch(ty)
     {
         case file_type::regular:   os<<'-'; break;
         case file_type::directory: os<<'d'; break;
         case file_type::symlink:   os<<'l'; break;
         default:                   os<<'?'; break;
     }
-    int pe=static_cast<int>(permissions);
+    int pe=static_cast<int>(per);
     os<<(pe & 0400 ? 'r' : '-')
       <<(pe & 0200 ? 'w' : '-')
       <<(pe & 0100 ? 'x' : '-')
@@ -168,7 +167,7 @@ void FilesystemElement::writeTo(ostream& os)
       <<(pe & 0004 ? 'r' : '-')
       <<(pe & 0002 ? 'w' : '-')
       <<(pe & 0001 ? 'x' : '-');
-    os<<' '<<user<<' '<<group<<' ';
+    os<<' '<<us<<' '<<gs<<' ';
     // Time is complicated. The gmtime_r functions, given its name, should fill
     // a struct tm with GMT time, but the documentation says UTC. And it's
     // unclear how it handles leap seconds, that should be the difference
@@ -179,25 +178,25 @@ void FilesystemElement::writeTo(ostream& os)
     // take the time zone information that it prints? Not sure.
     // So I decided to print +0000 manually as a string to be extra sure
     struct tm t;
-    assert(gmtime_r(&mtime,&t)==&t);
+    assert(gmtime_r(&mt,&t)==&t);
     os<<put_time(&t,"%F %T +0000")<<' ';
-    switch(type)
+    switch(ty)
     {
         case file_type::regular:
-            os<<size<<' '<<hash<<' ';
+            os<<sz<<' '<<fileHash<<' ';
             break;
         case file_type::symlink:
-            os<<symlinkTarget<<' ';
+            os<<symlink<<' ';
             break;
     }
-    os<<relativePath<<'\n';
+    os<<rp<<'\n';
 }
 
 bool operator< (const FilesystemElement& a, const FilesystemElement& b)
 {
     // Sort alphabetically (case sensitive) but put directories first
-    if(a.dir==b.dir) return a.relativePath < b.relativePath;
-    return a.dir > b.dir;
+    if(a.isDirectory()==b.isDirectory()) return a.relativePath() < b.relativePath();
+    return a.isDirectory() > b.isDirectory();
 }
 
 //
@@ -225,14 +224,14 @@ void FileLister::recursiveListFiles(const path& p)
     for(auto& e : fe)
     {
         e.writeTo(os);
-        if(e.type==file_type::unknown)
+        if(e.type()==file_type::unknown)
         {
-            cerr<<"Warning: "<<e.relativePath<<" has unsupported file type\n";
+            cerr<<"Warning: "<<e.relativePath()<<" has unsupported file type\n";
             unsupported=true;
         }
-        if(e.type!=file_type::directory && e.hard_link_count!=1)
+        if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
         {
-            cerr<<"Warning: "<<e.relativePath<<" has multiple hardlinks ("<<e.hard_link_count<<")\n";
+            cerr<<"Warning: "<<e.relativePath()<<" has multiple hardlinks ("<<e.hardLinkCount()<<")\n";
             unsupported=true;
         }
     }
@@ -242,6 +241,6 @@ void FileLister::recursiveListFiles(const path& p)
     {
         //NOTE: we list directories, not symlinks to directories. This also
         //saves us from worrying about filesystem loops through directory symlinks.
-        if(e.dir) recursiveListFiles(top / e.relativePath);
+        if(e.isDirectory()) recursiveListFiles(top / e.relativePath());
     }
 }
