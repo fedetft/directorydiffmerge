@@ -19,6 +19,9 @@
 
 #include <filesystem>
 #include <ostream>
+#include <istream>
+#include <list>
+#include <unordered_map>
 #include <ctime>
 
 /**
@@ -75,12 +78,7 @@ public:
      * Write the object to an ostream based on the diff file format
      * \param os ostream where to write
      */
-    void writeTo(std::ostream& os);
-
-    /**
-     * \return true if the FilesystemElement is a directory
-     */
-    bool isDirectory() const { return ty==std::filesystem::file_type::directory; }
+    void writeTo(std::ostream& os) const;
 
     /**
      * \return the type of the FilesystemElement (reguler file, directory, ...)
@@ -137,6 +135,11 @@ public:
      */
     uintmax_t hardLinkCount() const { return hardLinkCnt; }
 
+    /**
+     * \return true if the FilesystemElement is a directory
+     */
+    bool isDirectory() const { return ty==std::filesystem::file_type::directory; }
+
 private:
     //Fields that are written to diff files
     std::filesystem::file_type ty; ///< File type (regular, directory, ...)
@@ -150,13 +153,101 @@ private:
     std::filesystem::path symlink; ///< Symlink target path, only if symlink
 
     //Fields that are not written to diff files
-    uintmax_t hardLinkCnt=1;
+    uintmax_t hardLinkCnt=1;       ///< Number of hardlinks
 };
 
 /**
  * Compare operator for sorting
  */
 bool operator< (const FilesystemElement& a, const FilesystemElement& b);
+
+/**
+ * A node of an in-memory representation of the metadata of a directory tree
+ */
+class DirectoryNode
+{
+public:
+    DirectoryNode() {}
+
+    /**
+     * Constructor
+     */
+    explicit DirectoryNode(FilesystemElement elem) : elem(elem) {}
+
+    /**
+     * If the node is a directory, this member function allows to set its content
+     * \param content, a list of other DirectoryNodes
+     */
+    std::list<DirectoryNode>& setDirectoryContent(std::list<DirectoryNode>&& content);
+
+    /**
+     * \return a const reference to the FilesystemElement of this node
+     */
+    const FilesystemElement& getElement() const { return elem; }
+
+    /**
+     * \return a const reference to the nodes contained in the directory, or an
+     * empty list otherwise
+     */
+    const std::list<DirectoryNode>& getDirectoryContent() const { return content; }
+
+private:
+    FilesystemElement elem;
+    std::list<DirectoryNode> content;
+};
+
+/**
+ * Compare operator for sorting
+ */
+inline bool operator< (const DirectoryNode& a, const DirectoryNode& b)
+{
+    return a.getElement() < b.getElement();
+}
+
+/**
+ * An in-memory representation of the metadata of a directory tree
+ */
+class DirectoryTree
+{
+public:
+    DirectoryTree() {}
+
+    /**
+     * Construct a directory tree starting from the given top path
+     */
+    DirectoryTree(const std::filesystem::path& topPath);
+
+    /**
+     * Read from diff files
+     * \param is istream where to read
+     * \throws runtime_error in case of errors
+     */
+    void readFrom(std::istream& is);
+
+    /**
+     * Write the object to an ostream based on the diff file format
+     * \param os ostream where to write
+     */
+    void writeTo(std::ostream& os);
+
+    /**
+     * \return true if the last listFiles call encountered unsupported file
+     * types
+     */
+    bool unsupportedFilesFound() const { return unsupported; }
+
+private:
+    void recursiveBuildFromPath(const std::filesystem::path& p);
+
+    void recursiveWrite(const std::list<DirectoryNode>& nodes);
+
+    bool unsupported=false;
+    std::filesystem::path topPath;
+    std::list<DirectoryNode> topContent;
+    std::unordered_map<std::string,DirectoryNode*> index;
+    std::ostream *os=nullptr; //Only used by recursiveWrite
+    bool printBreak; //Only used by recursiveWrite
+};
 
 
 /**

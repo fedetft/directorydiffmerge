@@ -49,9 +49,12 @@ bool ls(variables_map& vm)
 
     if(vm.count("source"))
     {
-        FileLister fl(getOutputFile());
-        fl.listFiles(vm["source"].as<string>());
-        if(fl.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
+        DirectoryTree dt(vm["source"].as<string>());
+        if(dt.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
+        dt.writeTo(getOutputFile());
+//         FileLister fl(getOutputFile());
+//         fl.listFiles(vm["source"].as<string>());
+//         if(fl.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
         return true;
     }
 

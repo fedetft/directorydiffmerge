@@ -39,8 +39,8 @@ string ext_file_status::lookupUser(uid_t uid)
     struct passwd *result;
     if(getpwuid_r(uid, &pw, structBuffer.data(), structBuffer.size(), &result))
         throw runtime_error("lookupUser");
-    if(result) it=userCache.insert(it,make_pair(uid,result->pw_name));
-    else it=userCache.insert(it,make_pair(uid,to_string(uid))); //Not found
+    if(result) it=userCache.insert(it,{uid,result->pw_name});
+    else it=userCache.insert(it,{uid,to_string(uid)}); //Not found
     return it->second;
 }
 
@@ -56,8 +56,8 @@ string ext_file_status::lookupGroup(gid_t gid)
     struct group *result;
     if(getgrgid_r(gid, &gr, structBuffer.data(), structBuffer.size(), &result))
         throw runtime_error("lookupGroup");
-    if(result) it=groupCache.insert(it,make_pair(gid,result->gr_name));
-    else it=userCache.insert(it,make_pair(gid,to_string(gid))); //Not found
+    if(result) it=groupCache.insert(it,{gid,result->gr_name});
+    else it=userCache.insert(it,{gid,to_string(gid)}); //Not found
     return it->second;
 }
 

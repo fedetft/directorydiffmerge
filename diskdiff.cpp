@@ -15,7 +15,6 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
-#include <list>
 #include <sstream>
 #include <cassert>
 #include <iomanip>
@@ -148,7 +147,7 @@ void FilesystemElement::readFrom(const string& diffLine,
     hardLinkCnt=1;
 }
 
-void FilesystemElement::writeTo(ostream& os)
+void FilesystemElement::writeTo(ostream& os) const
 {
     switch(ty)
     {
@@ -197,6 +196,97 @@ bool operator< (const FilesystemElement& a, const FilesystemElement& b)
     // Sort alphabetically (case sensitive) but put directories first
     if(a.isDirectory()==b.isDirectory()) return a.relativePath() < b.relativePath();
     return a.isDirectory() > b.isDirectory();
+}
+
+//
+// class DirectoryNode
+//
+
+list<DirectoryNode>& DirectoryNode::setDirectoryContent(list<DirectoryNode>&& content)
+{
+    assert(elem.isDirectory());
+    this->content=std::move(content);
+    return this->content;
+}
+
+//
+// class DirectoryTree
+//
+
+DirectoryTree::DirectoryTree(const std::filesystem::path& topPath)
+{
+    this->topPath=absolute(topPath);
+    if(!is_directory(this->topPath))
+        throw logic_error(topPath.string()+" is not a directory");
+    unsupported=false;
+    recursiveBuildFromPath(this->topPath);
+}
+
+void DirectoryTree::readFrom(std::istream& is)
+{
+
+}
+
+void DirectoryTree::writeTo(std::ostream& os)
+{
+    this->os=&os;
+    printBreak=false;
+    recursiveWrite(topContent);
+    this->os=nullptr;
+}
+
+void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
+{
+    list<DirectoryNode> nodes, *nodesPtr;
+    for(auto& it : directory_iterator(topPath / p))
+        nodes.push_back(DirectoryNode(FilesystemElement(it.path(),topPath)));
+    nodes.sort();
+    if(topContent.empty())
+    {
+        topContent=std::move(nodes);
+        nodesPtr=&topContent;
+    } else {
+        auto it=index.find(p.string());
+        assert(it!=index.end());
+        nodesPtr=&it->second->setDirectoryContent(std::move(nodes));
+    }
+
+    for(auto& n : *nodesPtr)
+    {
+        auto& e=n.getElement();
+        auto inserted=index.insert({e.relativePath().string(),&n});
+        assert(inserted.second==true);
+        if(e.type()==file_type::unknown)
+        {
+            cerr<<"Warning: "<<e.relativePath()<<" has unsupported file type\n";
+            unsupported=true;
+        }
+        if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
+        {
+            cerr<<"Warning: "<<e.relativePath()<<" has multiple hardlinks ("<<e.hardLinkCount()<<")\n";
+            unsupported=true;
+        }
+    }
+
+    for(auto& n : *nodesPtr)
+    {
+        //NOTE: we list directories, not symlinks to directories. This also
+        //saves us from worrying about filesystem loops through directory symlinks.
+        auto& e=n.getElement();
+        if(e.isDirectory()) recursiveBuildFromPath(e.relativePath());
+    }
+}
+
+void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes)
+{
+    if(printBreak) *os<<'\n';
+    for(auto&n : nodes) n.getElement().writeTo(*os);
+    printBreak=nodes.empty()==false;
+    for(auto&n : nodes)
+    {
+        if(n.getElement().isDirectory()==false) break;
+        recursiveWrite(n.getDirectoryContent());
+    }
 }
 
 //
