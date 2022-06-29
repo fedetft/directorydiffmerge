@@ -52,9 +52,41 @@ bool ls(variables_map& vm)
         DirectoryTree dt(vm["source"].as<string>());
         if(dt.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
         dt.writeTo(getOutputFile());
-//         FileLister fl(getOutputFile());
-//         fl.listFiles(vm["source"].as<string>());
-//         if(fl.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
+        return true;
+    }
+
+    return false;
+}
+
+bool compare(variables_map& vm)
+{
+    string outFileName;
+    ofstream outfile;
+    auto getOutputFile=[&]() -> ostream&
+    {
+        if(outFileName.empty()) return cout;
+        outfile.open(outFileName);
+        return outfile;
+    };
+
+    if(vm.count("out"))
+    {
+        outFileName=vm["out"].as<string>();
+        if(exists(outFileName))
+        {
+            cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
+            return true;
+        }
+    }
+
+    if(vm.count("source") && vm.count("target"))
+    {
+        DirectoryTree a(vm["source"].as<string>());
+        DirectoryTree b(vm["target"].as<string>());
+        if(a.unsupportedFilesFound() || b.unsupportedFilesFound())
+            cerr<<"Warning: unsupported files found\n";
+        auto diff=compare2(a,b);
+        getOutputFile()<<diff;
         return true;
     }
 
@@ -63,13 +95,19 @@ bool ls(variables_map& vm)
 
 bool test(variables_map&)
 {
-    string line;
-    while(getline(cin,line))
-    {
-        FilesystemElement fe(line);
-        fe.writeTo(cout);
-    }
-    return 0;
+    string fileName="dump.txt";
+    ifstream in(fileName);
+    assert(in);
+    DirectoryTree dt(in,fileName);
+    dt.writeTo(cout);
+
+//     string line;
+//     while(getline(cin,line))
+//     {
+//         FilesystemElement fe(line);
+//         fe.writeTo(cout);
+//     }
+    return true;
 }
 
 int main(int argc, char *argv[])
@@ -77,7 +115,8 @@ int main(int argc, char *argv[])
     options_description desc("diskdiff options");
     desc.add_options()
         ("help",     "prints this")
-        ("source,s", value<string>(), "source directory")
+        ("source,s", value<string>(), "source path")
+        ("target,t", value<string>(), "target path")
         ("out,o",    value<string>(), "save data to arg instead of stdout")
     ;
 
@@ -87,7 +126,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    string op=argv[1];
+    string op=argv[1]; //TODO: use program options for this
     variables_map vm;
     store(parse_command_line(argc,argv,desc),vm);
     notify(vm);
@@ -95,6 +134,7 @@ int main(int argc, char *argv[])
     const map<string,function<bool (variables_map&)>> operations=
     {
         {"ls", ls},
+        {"compare", compare},
         {"test", test}
     };
 

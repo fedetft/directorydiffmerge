@@ -175,6 +175,17 @@ inline bool operator!= (const FilesystemElement& a, const FilesystemElement& b)
 }
 
 /**
+ * Write a FilesystemElement to an ostream based on the diff file format
+ * \param os ostream where to write
+ * \param e FilesystemElement to write
+ */
+inline std::ostream& operator<<(std::ostream& os, const FilesystemElement& e)
+{
+    e.writeTo(os);
+    return os;
+}
+
+/**
  * A node of an in-memory representation of the metadata of a directory tree
  */
 class DirectoryNode
@@ -238,8 +249,7 @@ public:
      */
     DirectoryTree(const std::filesystem::path& inputPath)
     {
-        if(is_directory(inputPath)) scanDirectory(inputPath);
-        else readFrom(inputPath);
+        fromPath(inputPath);
     }
     
     /**
@@ -250,6 +260,18 @@ public:
     DirectoryTree(std::istream& is, const std::string& diffFileName="")
     {
         readFrom(is,diffFileName);
+    }
+
+    /**
+     * Construct a directory tree starting from either a diff file or a directory
+     * \param inputPath if the path is to a directory, use it as the top level
+     * directory where to start the directory tree, if it is a file path, assume
+     * it is a path to a diff file
+     */
+    void fromPath(const std::filesystem::path& inputPath)
+    {
+        if(is_directory(inputPath)) scanDirectory(inputPath);
+        else readFrom(inputPath);
     }
 
     /**
@@ -291,7 +313,7 @@ public:
     /**
      * \return the root of the directory tree, containing the content of the top
      * directory and all its subfolders, if any
-     * NOTE: since all ellements are stored by value thiis may be a very
+     * NOTE: since all ellements are stored by value this may be a very
      * heavy object, never copy this tree, only access it by reference
      */
     const std::list<DirectoryNode>& getTreeRoot() const { return topContent; }
@@ -327,6 +349,13 @@ private:
  */
 template<unsigned N>
 using DirectoryDiff=std::list<std::array<std::optional<FilesystemElement>,N>>;
+
+/**
+ * Print a diff to an ostream based on the diff file format
+ * \param os ostream where to write
+ * \param diff diff to write
+ */
+std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff);
 
 /**
  * Two way diff between two directory trees

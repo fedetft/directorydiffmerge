@@ -371,6 +371,17 @@ void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes)
     }
 }
 
+std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
+{
+    for(auto& d : diff)
+    {
+        if(d[0]) os<<"- "<<d[0].value();
+        if(d[1]) os<<"+ "<<d[1].value();
+        os<<'\n';
+    }
+    return os;
+}
+
 /**
  * Helper class to implement compare2 recursively
  */
