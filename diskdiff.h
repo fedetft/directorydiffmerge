@@ -21,6 +21,8 @@
 #include <ostream>
 #include <istream>
 #include <list>
+#include <array>
+#include <optional>
 #include <unordered_map>
 #include <ctime>
 
@@ -154,6 +156,8 @@ private:
 
     //Fields that are not written to diff files
     uintmax_t hardLinkCnt=1;       ///< Number of hardlinks
+
+    friend bool operator== (const FilesystemElement& a, const FilesystemElement& b);
 };
 
 /**
@@ -162,12 +166,26 @@ private:
 bool operator< (const FilesystemElement& a, const FilesystemElement& b);
 
 /**
+ * Equality/inequality comparison
+ */
+bool operator== (const FilesystemElement& a, const FilesystemElement& b);
+inline bool operator!= (const FilesystemElement& a, const FilesystemElement& b)
+{
+    return !(a==b);
+}
+
+/**
  * A node of an in-memory representation of the metadata of a directory tree
  */
 class DirectoryNode
 {
 public:
     DirectoryNode() {}
+
+    // Heavy object not ment to be copyable, only move assignable.
+    // This declaration implicitly deletes copy constructor and copy assignment
+    // in a way that does not upset std::list
+    DirectoryNode(DirectoryNode&&)=default;
 
     /**
      * Constructor
@@ -213,28 +231,81 @@ public:
     DirectoryTree() {}
 
     /**
-     * Construct a directory tree starting from the given top path
+     * Construct a directory tree starting from either a diff file or a directory
+     * \param inputPath if the path is to a directory, use it as the top level
+     * directory where to start the directory tree, if it is a file path, assume
+     * it is a path to a diff file
      */
-    DirectoryTree(const std::filesystem::path& topPath);
+    DirectoryTree(const std::filesystem::path& inputPath)
+    {
+        if(is_directory(inputPath)) scanDirectory(inputPath);
+        else readFrom(inputPath);
+    }
+    
+    /**
+     * Construct a directory tree by reading from diff files
+     * \param is istream where to read
+     * \throws runtime_error in case of errors
+     */
+    DirectoryTree(std::istream& is, const std::string& diffFileName="")
+    {
+        readFrom(is,diffFileName);
+    }
+
+    /**
+     * Scan directory tree starting from the given top path
+     * \param topPath top level directory where to start the directory tree
+     */
+    void scanDirectory(const std::filesystem::path& topPath);
+
+    /**
+     * Read from diff files
+     * \param diffFile path of the diff file
+     */
+    void readFrom(const std::filesystem::path& diffFile);
 
     /**
      * Read from diff files
      * \param is istream where to read
      * \throws runtime_error in case of errors
      */
-    void readFrom(std::istream& is);
+    void readFrom(std::istream& is, const std::string& diffFileName="");
 
     /**
      * Write the object to an ostream based on the diff file format
      * \param os ostream where to write
      */
     void writeTo(std::ostream& os);
+    
+    /**
+     * Deallocate the entire directory tree
+     */
+    void clear();
 
     /**
      * \return true if the last listFiles call encountered unsupported file
      * types
      */
     bool unsupportedFilesFound() const { return unsupported; }
+
+    /**
+     * \return the root of the directory tree, containing the content of the top
+     * directory and all its subfolders, if any
+     * NOTE: since all ellements are stored by value thiis may be a very
+     * heavy object, never copy this tree, only access it by reference
+     */
+    const std::list<DirectoryNode>& getTreeRoot() const { return topContent; }
+
+    /**
+     * \return the a flat index of all the files and directories in the
+     * directory tree, that is the top directory and all its subdirectories
+     * The key is the relative path, while the value is a pointer into the tree
+     * data structure
+     */
+    const std::unordered_map<std::string,DirectoryNode*>& getIndex() const
+    {
+        return index;
+    }
 
 private:
     void recursiveBuildFromPath(const std::filesystem::path& p);
@@ -242,51 +313,22 @@ private:
     void recursiveWrite(const std::list<DirectoryNode>& nodes);
 
     bool unsupported=false;
-    std::filesystem::path topPath;
     std::list<DirectoryNode> topContent;
     std::unordered_map<std::string,DirectoryNode*> index;
+    std::filesystem::path topPath; // Only used by recursiveBuildFromPath
     std::ostream *os=nullptr; //Only used by recursiveWrite
     bool printBreak; //Only used by recursiveWrite
 };
 
+/**
+ * Type returned by compare2
+ * First element of the pair is a FilesystemElement of the A tree
+ * Second element of the pair is a FilesystemElement of the B tree
+ */
+template<unsigned N>
+using DirectoryDiff=std::list<std::array<std::optional<FilesystemElement>,N>>;
 
 /**
- * Recursively list all files in a directory and its subdirectories listing
- * their properties
- *
- * On an SSD it processed 87.5GB in 137s ~650MB/s with SHA1 hashing
- * On an HDD it processed 87.5GB in 1134s ~79MB/s with SHA1 hashing
+ * Two way diff between two directory trees
  */
-class FileLister
-{
-public:
-    /**
-     * Constructor
-     * \param os ink ostream where listed data will be printed
-     */
-    explicit FileLister(std::ostream& os) : os(os) {}
-
-    /**
-     * Perform the actual work, for each entry found print
-     * - type
-     * - permissions
-     * - owner and group
-     * - for regular files, hash, size and last modified date
-     * - for symlinks, target
-     * \param top top level directory where to start listing
-     */
-    void listFiles(const std::filesystem::path& top);
-
-    /**
-     * \return true if the last listFiles call encountered unsupported file
-     * types
-     */
-    bool unsupportedFilesFound() const { return unsupported; }
-
-private:
-    void recursiveListFiles(const std::filesystem::path& p);
-    std::ostream& os;
-    std::filesystem::path top;
-    bool printBreak;
-    bool unsupported=false;
-};
+DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b);

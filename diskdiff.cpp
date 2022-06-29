@@ -18,6 +18,7 @@
 #include <sstream>
 #include <cassert>
 #include <iomanip>
+#include <unordered_set>
 #include <crypto++/sha.h>
 #include <crypto++/hex.h>
 #include <crypto++/files.h>
@@ -79,7 +80,7 @@ void FilesystemElement::readFrom(const string& diffLine,
         string s=diffFileName;
         if(diffFileName.empty()==false) s+=": ";
         s+=m;
-        if(lineNo>0) s+=" at line"+to_string(lineNo);
+        if(lineNo>0) s+=" at line "+to_string(lineNo);
         s+=", wrong line is '"+diffLine+"'";
         throw runtime_error(s);
     };
@@ -198,6 +199,13 @@ bool operator< (const FilesystemElement& a, const FilesystemElement& b)
     return a.isDirectory() > b.isDirectory();
 }
 
+bool operator== (const FilesystemElement& a, const FilesystemElement& b)
+{
+    return a.ty==b.ty && a.per==b.per && a.us==b.us && a.gs==b.gs
+        && a.mt==b.mt && a.sz==b.sz   && a.fileHash == b.fileHash
+        && a.rp==b.rp && a.symlink==b.symlink;
+}
+
 //
 // class DirectoryNode
 //
@@ -213,8 +221,9 @@ list<DirectoryNode>& DirectoryNode::setDirectoryContent(list<DirectoryNode>&& co
 // class DirectoryTree
 //
 
-DirectoryTree::DirectoryTree(const std::filesystem::path& topPath)
+void DirectoryTree::scanDirectory(const path& topPath)
 {
+    clear();
     this->topPath=absolute(topPath);
     if(!is_directory(this->topPath))
         throw logic_error(topPath.string()+" is not a directory");
@@ -222,9 +231,74 @@ DirectoryTree::DirectoryTree(const std::filesystem::path& topPath)
     recursiveBuildFromPath(this->topPath);
 }
 
-void DirectoryTree::readFrom(std::istream& is)
+void DirectoryTree::readFrom(const path& diffFile)
 {
+    clear();
+    ifstream in(diffFile);
+    if(!in) throw runtime_error(string("file not found: ")+diffFile.string());
+    readFrom(in,diffFile.string());
+}
 
+void DirectoryTree::readFrom(istream& is, const string& diffFileName)
+{
+    clear();
+    int lineNo=0;
+    string line;
+    list<DirectoryNode> nodes;
+    
+    auto fail=[&diffFileName,&lineNo](const string& m)
+    {
+        string s=diffFileName;
+        if(diffFileName.empty()==false) s+=": ";
+        s+=m+" before line "+to_string(lineNo);
+        throw runtime_error(s);
+    };
+    
+    auto add=[&nodes,&fail,this](){
+        if(nodes.empty()) return;
+        string p=nodes.front().getElement().relativePath().parent_path();
+        for(auto& n : nodes)
+        {
+            auto& e=n.getElement();
+            if(p!=e.relativePath().parent_path()) fail("different paths grouped");
+            auto inserted=index.insert({e.relativePath().string(),&n});
+            if(inserted.second==false) fail("index insert failed (duplicate?)");
+            if(e.type()==file_type::unknown)
+            {
+                cerr<<"Warning: "<<e.relativePath()<<" has unsupported file type\n";
+                unsupported=true;
+            }
+            if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
+            {
+                cerr<<"Warning: "<<e.relativePath()<<" has multiple hardlinks ("<<e.hardLinkCount()<<")\n";
+                unsupported=true;
+            }
+        }
+        if(topContent.empty())
+        {
+            if(p.empty()==false) fail("file does not start with top level directory");
+            topContent=std::move(nodes);
+            nodes=list<DirectoryNode>();
+        } else {
+            auto it=index.find(p);
+            if(it==index.end()) fail("directory content not preceded by index insert");
+            if(it->second->getDirectoryContent().empty()==false)
+                fail("duplicate noncontiguous directory content");
+            it->second->setDirectoryContent(std::move(nodes));
+            nodes=list<DirectoryNode>();
+        }
+    };
+
+    while(getline(is,line))
+    {
+        lineNo++;
+        if(line.empty()) add();
+        else {
+            DirectoryNode n(FilesystemElement(line,diffFileName,lineNo));
+            nodes.push_back(std::move(n));
+        }
+    }
+    add();
 }
 
 void DirectoryTree::writeTo(std::ostream& os)
@@ -233,6 +307,14 @@ void DirectoryTree::writeTo(std::ostream& os)
     printBreak=false;
     recursiveWrite(topContent);
     this->os=nullptr;
+}
+
+void DirectoryTree::clear()
+{
+    unsupported=false;
+    topPath.clear();
+    topContent.clear();
+    index.clear();
 }
 
 void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
@@ -289,48 +371,58 @@ void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes)
     }
 }
 
-//
-// class FileLister
-//
-
-void FileLister::listFiles(const path& top)
+/**
+ * Helper class to implement compare2 recursively
+ */
+class Compare2Helper
 {
-    this->top=absolute(top);
-    if(!is_directory(this->top))
-        throw logic_error(top.string()+" is not a directory");
-    printBreak=false;
-    unsupported=false;
-    recursiveListFiles(this->top);
+public:
+    Compare2Helper(const DirectoryTree& a, const DirectoryTree& b)
+        : aIndex(a.getIndex()), bIndex(b.getIndex()) {}
+
+    void recursiveCompare(const list<DirectoryNode>& a,
+                          const list<DirectoryNode>& b);
+
+    const unordered_map<string,DirectoryNode*>& aIndex;
+    const unordered_map<string,DirectoryNode*>& bIndex;
+    DirectoryDiff<2> result;
+};
+
+void Compare2Helper::recursiveCompare(const list<DirectoryNode>& a,
+        const list<DirectoryNode>& b)
+{
+    unordered_set<string> itemNames;
+    for(auto& n : a) itemNames.insert(n.getElement().relativePath().string());
+    for(auto& n : b) itemNames.insert(n.getElement().relativePath().string());
+    list<array<DirectoryNode*,2>> commonDrectories;
+    for(auto& itn : itemNames)
+    {
+        auto ita=aIndex.find(itn);
+        auto itb=bIndex.find(itn);
+        if(ita!=aIndex.end() && itb!=bIndex.end())
+        {
+            auto& ae=ita->second->getElement();
+            auto& be=itb->second->getElement();
+            if(ae!=be) result.push_back({ae,be});
+            // Pruning comparison, only go down common directories
+            // that's only possible in 2 way compare
+            if(ae.isDirectory() && be.isDirectory())
+                commonDrectories.push_back({ita->second,itb->second});
+        } else if(ita==aIndex.end() && itb!=bIndex.end()) {
+            result.push_back({nullopt,itb->second->getElement()});
+        } else if(ita!=aIndex.end() && itb==bIndex.end()) {
+            result.push_back({ita->second->getElement(),nullopt});
+        } else assert(false);
+    }
+    itemNames.clear(); //Save memory while doing recursion
+    for(auto& dirs : commonDrectories)
+        recursiveCompare(dirs[0]->getDirectoryContent(),
+                         dirs[1]->getDirectoryContent());
 }
 
-void FileLister::recursiveListFiles(const path& p)
+DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b)
 {
-    if(printBreak) os<<'\n';
-
-    list<FilesystemElement> fe;
-    for(auto& it : directory_iterator(p))
-        fe.push_back(FilesystemElement(it.path(),top));
-    fe.sort();
-    for(auto& e : fe)
-    {
-        e.writeTo(os);
-        if(e.type()==file_type::unknown)
-        {
-            cerr<<"Warning: "<<e.relativePath()<<" has unsupported file type\n";
-            unsupported=true;
-        }
-        if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
-        {
-            cerr<<"Warning: "<<e.relativePath()<<" has multiple hardlinks ("<<e.hardLinkCount()<<")\n";
-            unsupported=true;
-        }
-    }
-    printBreak=fe.empty()==false;
-
-    for(auto& e : fe)
-    {
-        //NOTE: we list directories, not symlinks to directories. This also
-        //saves us from worrying about filesystem loops through directory symlinks.
-        if(e.isDirectory()) recursiveListFiles(top / e.relativePath());
-    }
+    Compare2Helper cmp(a,b);
+    cmp.recursiveCompare(a.getTreeRoot(),b.getTreeRoot());
+    return std::move(cmp.result);
 }
