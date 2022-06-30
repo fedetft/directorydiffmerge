@@ -35,7 +35,7 @@ std::string hashFile(const std::filesystem::path& p);
 
 /**
  * This class is used to load/store information about files and directories
- * in diff files
+ * in metadata files
  */
 class FilesystemElement
 {
@@ -54,30 +54,30 @@ public:
                       const std::filesystem::path& top);
 
     /**
-     * Constructor from string, used when reading from diff files
-     * \param diffLine line of the diff file to construct the object from
-     * \param diffFileName name of diff file, used for error reporting
-     * \param lineNo line number of diff file, used for error reporting
+     * Constructor from string, used when reading from metadata files
+     * \param metadataLine line of the metadata file to construct the object from
+     * \param metadataFileName name of metadata file, used for error reporting
+     * \param lineNo line number of metadata file, used for error reporting
      * \throws runtime_error in case of errors
      */
-    FilesystemElement(const std::string& diffLine,
-                      const std::string& diffFileName="", int lineNo=-1)
+    explicit FilesystemElement(const std::string& metadataLine,
+                               const std::string& metadataFileName="", int lineNo=-1)
     {
-        readFrom(diffLine,diffFileName,lineNo);
+        readFrom(metadataLine,metadataFileName,lineNo);
     }
 
     /**
-     * Read from diff files
-     * \param diffLine line of the diff file to construct the object from
-     * \param diffFileName name of diff file, used for error reporting
-     * \param lineNo line number of diff file, used for error reporting
+     * Read from metadata files
+     * \param metadataLine line of the metadata file to construct the object from
+     * \param metadataFileName name of metadata file, used for error reporting
+     * \param lineNo line number of metadata file, used for error reporting
      * \throws runtime_error in case of errors
      */
-    void readFrom(const std::string& diffLine,
-                  const std::string& diffFileName="", int lineNo=-1);
+    void readFrom(const std::string& metadataLine,
+                  const std::string& metadataFileName="", int lineNo=-1);
 
     /**
-     * Write the object to an ostream based on the diff file format
+     * Write the object to an ostream based on the metadata file format
      * \param os ostream where to write
      */
     void writeTo(std::ostream& os) const;
@@ -132,8 +132,8 @@ public:
 
     /**
      * \return the hardlink count. Note that this information is not saved
-     * in the diff file, so it is only available if the FilesystemElement has
-     * been read from disk.
+     * in the metadata file, so it is only available if the FilesystemElement
+     * has been read from disk.
      */
     uintmax_t hardLinkCount() const { return hardLinkCnt; }
 
@@ -143,7 +143,7 @@ public:
     bool isDirectory() const { return ty==std::filesystem::file_type::directory; }
 
 private:
-    //Fields that are written to diff files
+    //Fields that are written to metadata files
     std::filesystem::file_type ty; ///< File type (regular, directory, ...)
     std::filesystem::perms per;    ///< File permissions (rwxrwxrwx)
     std::string us;                ///< File user (owner)
@@ -154,14 +154,15 @@ private:
     std::filesystem::path rp;      ///< File path relative to top level directory
     std::filesystem::path symlink; ///< Symlink target path, only if symlink
 
-    //Fields that are not written to diff files
+    //Fields that are not written to metadata files
     uintmax_t hardLinkCnt=1;       ///< Number of hardlinks
 
     friend bool operator== (const FilesystemElement& a, const FilesystemElement& b);
 };
 
 /**
- * Compare operator for sorting
+ * Compare operator for sorting.
+ * It puts directories first and sorts alphabetically
  */
 bool operator< (const FilesystemElement& a, const FilesystemElement& b);
 
@@ -175,7 +176,7 @@ inline bool operator!= (const FilesystemElement& a, const FilesystemElement& b)
 }
 
 /**
- * Write a FilesystemElement to an ostream based on the diff file format
+ * Write a FilesystemElement to an ostream based on the metadata file format
  * \param os ostream where to write
  * \param e FilesystemElement to write
  */
@@ -205,7 +206,9 @@ public:
 
     /**
      * If the node is a directory, this member function allows to set its content
-     * \param content, a list of other DirectoryNodes
+     * Note that the directory content is moved, not copied into this object.
+     * \param content, a list of other DirectoryNodes to be moved into this object
+     * \return a reference to the directory content after being moved
      */
     std::list<DirectoryNode>& setDirectoryContent(std::list<DirectoryNode>&& content);
 
@@ -221,8 +224,8 @@ public:
     const std::list<DirectoryNode>& getDirectoryContent() const { return content; }
 
 private:
-    FilesystemElement elem;
-    std::list<DirectoryNode> content;
+    FilesystemElement elem;           ///< The filesystem element
+    std::list<DirectoryNode> content; ///< If element is a directory, its content
 };
 
 /**
@@ -242,10 +245,10 @@ public:
     DirectoryTree() {}
 
     /**
-     * Construct a directory tree starting from either a diff file or a directory
+     * Construct a directory tree from either a metadata file or a directory
      * \param inputPath if the path is to a directory, use it as the top level
      * directory where to start the directory tree, if it is a file path, assume
-     * it is a path to a diff file
+     * it is a path to a metadata file
      */
     DirectoryTree(const std::filesystem::path& inputPath)
     {
@@ -253,20 +256,20 @@ public:
     }
     
     /**
-     * Construct a directory tree by reading from diff files
+     * Construct a directory tree by reading from metadata files
      * \param is istream where to read
      * \throws runtime_error in case of errors
      */
-    DirectoryTree(std::istream& is, const std::string& diffFileName="")
+    DirectoryTree(std::istream& is, const std::string& metadataFileName="")
     {
-        readFrom(is,diffFileName);
+        readFrom(is,metadataFileName);
     }
 
     /**
-     * Construct a directory tree starting from either a diff file or a directory
+     * Construct a directory tree from either a metadata file or a directory
      * \param inputPath if the path is to a directory, use it as the top level
      * directory where to start the directory tree, if it is a file path, assume
-     * it is a path to a diff file
+     * it is a path to a metadata file
      */
     void fromPath(const std::filesystem::path& inputPath)
     {
@@ -281,20 +284,20 @@ public:
     void scanDirectory(const std::filesystem::path& topPath);
 
     /**
-     * Read from diff files
-     * \param diffFile path of the diff file
+     * Read from metadata files
+     * \param metadataFile path of the metadata file
      */
-    void readFrom(const std::filesystem::path& diffFile);
+    void readFrom(const std::filesystem::path& metadataFile);
 
     /**
-     * Read from diff files
+     * Read from metadata files
      * \param is istream where to read
      * \throws runtime_error in case of errors
      */
-    void readFrom(std::istream& is, const std::string& diffFileName="");
+    void readFrom(std::istream& is, const std::string& metadataFileName="");
 
     /**
-     * Write the object to an ostream based on the diff file format
+     * Write the object to an ostream based on the metadata file format
      * \param os ostream where to write
      */
     void writeTo(std::ostream& os) const;
@@ -343,7 +346,7 @@ private:
 };
 
 /**
- * Write a DirectoryTree to an ostream based on the diff file format
+ * Write a DirectoryTree to an ostream based on the metadata file format
  * \param os ostream where to write
  * \param e FilesystemElement to write
  */

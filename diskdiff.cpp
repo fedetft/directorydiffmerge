@@ -72,20 +72,20 @@ FilesystemElement::FilesystemElement(const path& p, const path& top)
     }
 }
 
-void FilesystemElement::readFrom(const string& diffLine,
-                                 const string& diffFileName, int lineNo)
+void FilesystemElement::readFrom(const string& metadataLine,
+                                 const string& metadataFileName, int lineNo)
 {
     auto fail=[&](const string& m)
     {
-        string s=diffFileName;
-        if(diffFileName.empty()==false) s+=": ";
+        string s=metadataFileName;
+        if(metadataFileName.empty()==false) s+=": ";
         s+=m;
         if(lineNo>0) s+=" at line "+to_string(lineNo);
-        s+=", wrong line is '"+diffLine+"'";
+        s+=", wrong line is '"+metadataLine+"'";
         throw runtime_error(s);
     };
 
-    istringstream in(diffLine);
+    istringstream in(metadataLine);
     string permStr;
     in>>permStr;
     if(!in || permStr.size()!=10) fail("Error reading permission string");
@@ -229,27 +229,28 @@ void DirectoryTree::scanDirectory(const path& topPath)
         throw logic_error(topPath.string()+" is not a directory");
     unsupported=false;
     recursiveBuildFromPath(this->topPath);
+    this->topPath.clear();
 }
 
-void DirectoryTree::readFrom(const path& diffFile)
+void DirectoryTree::readFrom(const path& metadataFile)
 {
     clear();
-    ifstream in(diffFile);
-    if(!in) throw runtime_error(string("file not found: ")+diffFile.string());
-    readFrom(in,diffFile.string());
+    ifstream in(metadataFile);
+    if(!in) throw runtime_error(string("file not found: ")+metadataFile.string());
+    readFrom(in,metadataFile.string());
 }
 
-void DirectoryTree::readFrom(istream& is, const string& diffFileName)
+void DirectoryTree::readFrom(istream& is, const string& metadataFileName)
 {
     clear();
     int lineNo=0;
     string line;
     list<DirectoryNode> nodes;
     
-    auto fail=[&diffFileName,&lineNo](const string& m)
+    auto fail=[&metadataFileName,&lineNo](const string& m)
     {
-        string s=diffFileName;
-        if(diffFileName.empty()==false) s+=": ";
+        string s=metadataFileName;
+        if(metadataFileName.empty()==false) s+=": ";
         s+=m+" before line "+to_string(lineNo);
         throw runtime_error(s);
     };
@@ -294,7 +295,7 @@ void DirectoryTree::readFrom(istream& is, const string& diffFileName)
         lineNo++;
         if(line.empty()) add();
         else {
-            DirectoryNode n(FilesystemElement(line,diffFileName,lineNo));
+            DirectoryNode n(FilesystemElement(line,metadataFileName,lineNo));
             nodes.push_back(std::move(n));
         }
     }
