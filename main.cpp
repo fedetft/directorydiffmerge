@@ -17,8 +17,9 @@
 
 #include <iostream>
 #include <fstream>
-#include <functional>
+#include <vector>
 #include <map>
+#include <functional>
 #include <boost/program_options.hpp>
 #include "core.h"
 
@@ -26,115 +27,154 @@ using namespace std;
 using namespace std::filesystem;
 using namespace boost::program_options;
 
-bool ls(variables_map& vm)
+/**
+ * Print help and terminate the program
+ */
+void help()
 {
-    string outFileName;
-    ofstream outfile;
-    auto getOutputFile=[&]() -> ostream&
-    {
-        if(outFileName.empty()) return cout;
-        outfile.open(outFileName);
-        return outfile;
-    };
+    cerr<<R"(ddm: DirectoryDiffMerge tool
 
-    if(vm.count("out"))
-    {
-        outFileName=vm["out"].as<string>();
-        if(exists(outFileName))
-        {
-            cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
-            return true;
-        }
-    }
+Legend:
+<dir> : directory
+<met> : metadata file
+<d|m> : either directory or metadata file
+<dif> : diff file
+<ign> : list of metadata to ignore
+        one or more of {perm,user,group,mtime,size,hash}
 
-    if(vm.count("source"))
-    {
-        DirectoryTree dt(vm["source"].as<string>());
-        if(dt.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
-        getOutputFile()<<dt;
-        return true;
-    }
+Usage:
+ddm ls <dir>                        # List directory, write metadata to stdout
+ddm ls <dir> -o <met>               # List directory, write metadata to file
+ddm diff <d|m> <d|m>                # Diff directories or metadata, write stdout
+ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
+ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
+ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
 
-    return false;
+ddm scrub <dir> <met> <met>         # Check for bit rot, correct if possible
+ddm backup -s <dir> -t <dir>        # Backup source dir (readonly) to target dir
+ddm backup -s <dir> -t <dir> <met> <met>  # Backup and update bit rot copies
+                                          # assumes meatadata is consistent,
+                                          # better do a scrub before
+ddm sync -s <d|m> -t <d|m> -o <dir> # ??? TODO
+)";
+    exit(100);
 }
 
-bool compare(variables_map& vm)
+/**
+ * ddm ls command
+ */
+int ls(variables_map& vm, ostream& out)
 {
-    string outFileName;
-    ofstream outfile;
-    auto getOutputFile=[&]() -> ostream&
-    {
-        if(outFileName.empty()) return cout;
-        outfile.open(outFileName);
-        return outfile;
-    };
+    vector<string> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
 
-    if(vm.count("out"))
+    if(vm.count("help")   || vm.count("source") || vm.count("target")
+    || vm.count("ignore") || inputs.size()>1)
     {
-        outFileName=vm["out"].as<string>();
-        if(exists(outFileName))
-        {
-            cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
-            return true;
-        }
+        cerr<<R"(ddm ls
+Usage:
+ddm ls <dir>                        # List directory, write metadata to stdout
+ddm ls <dir> -o <met>               # List directory, write metadata to file
+)";
+        return 100;
     }
 
-    if(vm.count("source") && vm.count("target"))
+    DirectoryTree dt;
+    dt.scanDirectory(inputs.empty() ? "." : inputs.at(0));
+    if(dt.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
+    out<<dt;
+    return 0;
+}
+
+/**
+ * ddm diff command
+ */
+int diff(variables_map& vm, ostream& out)
+{
+    vector<string> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
+
+    if(vm.count("help") || vm.count("source") || vm.count("target")
+    || inputs.size()<2 || inputs.size()>3)
     {
-        DirectoryTree a(vm["source"].as<string>());
-        DirectoryTree b(vm["target"].as<string>());
+        cerr<<R"(ddm diff
+Usage:
+ddm diff <d|m> <d|m>                # Diff directories or metadata, write stdout
+ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
+ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
+ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
+)";
+        return 100;
+    }
+
+    //TODO: handle the ignore option
+    if(inputs.size()==2)
+    {
+        DirectoryTree a(inputs.at(0));
+        DirectoryTree b(inputs.at(1));
         if(a.unsupportedFilesFound() || b.unsupportedFilesFound())
             cerr<<"Warning: unsupported files found\n";
         auto diff=compare2(a,b);
-        getOutputFile()<<diff;
-        return true;
+        out<<diff;
+        return diff.size()==0 ? 0 : 1; //Allow to check if differences found
+    } else {
+        //TODO: 3-way diff
+        return 1;
     }
-
-    return false;
-}
-
-bool test(variables_map&)
-{
-    string fileName="dump.txt";
-    ifstream in(fileName);
-    assert(in);
-    DirectoryTree dt(in,fileName);
-    cout<<dt;
-    return true;
 }
 
 int main(int argc, char *argv[])
 {
-    options_description desc("diskdiff options");
+    //Basic sanity check
+    if(argc<2) help();
+
+    //Force program_options to treat the first option separately as program name
+    argc--;
+    argv++;
+
+    //Parse command line
+    options_description desc("options");
     desc.add_options()
-        ("help",     "prints this")
-        ("source,s", value<string>(), "source path")
-        ("target,t", value<string>(), "target path")
-        ("out,o",    value<string>(), "save data to arg instead of stdout")
+        ("help,h",   "prints this")
+        ("source,s", value<string>(), "source")
+        ("target,t", value<string>(), "target")
+        ("ignore,i", value<string>(), "ignore")
+        ("output,o", value<string>(), "output")
+        ("input",    value<vector<string>>(), "input")
     ;
-
-    if(argc<2)
-    {
-        cout<<desc<<'\n';
-        return 1;
-    }
-
-    string op=argv[1]; //TODO: use program options for this
+    positional_options_description p;
+    p.add("input", -1);
     variables_map vm;
-    store(parse_command_line(argc,argv,desc),vm);
+    store(command_line_parser(argc,argv).options(desc).positional(p).run(),vm);
     notify(vm);
 
-    const map<string,function<bool (variables_map&)>> operations=
+    //Handle redirecting output to file
+    ostream *out=&cout;
+    ofstream outfile;
+    if(vm.count("output"))
     {
-        {"ls", ls},
-        {"compare", compare},
-        {"test", test}
+        string outFileName=vm["output"].as<string>();
+        if(exists(outFileName))
+        {
+            cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
+            return 10;
+        }
+        outfile.open(outFileName);
+        if(!outfile)
+        {
+            cerr<<"Error opening "<<outFileName<<". Aborting.\n";
+            return 10;
+        }
+        out=&outfile;
+    }
+
+    //Decide what to do
+    const map<string,function<int (variables_map&, ostream&)>> operations=
+    {
+        {"ls",   ls},
+        {"diff", diff},
     };
-
-    auto it=operations.find(op);
-    if(it!=operations.end() && it->second(vm)) return 0;
-
-    //No valid option passed, print help
-    cout<<desc<<'\n';
-    return 1;
+    auto it=operations.find(argv[0]);
+    if(it==operations.end()) help();
+    return it->second(vm,*out);
 }
