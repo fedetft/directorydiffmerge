@@ -20,7 +20,7 @@
 #include <functional>
 #include <map>
 #include <boost/program_options.hpp>
-#include "diskdiff.h"
+#include "core.h"
 
 using namespace std;
 using namespace std::filesystem;

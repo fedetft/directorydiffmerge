@@ -24,7 +24,7 @@
 #include <crypto++/files.h>
 #include <crypto++/filters.h>
 #include "extfs.h"
-#include "diskdiff.h"
+#include "core.h"
 
 using namespace std;
 using namespace std::filesystem;

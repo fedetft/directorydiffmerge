@@ -1,16 +1,17 @@
 
 cmake_minimum_required(VERSION 3.1)
-project(DISKDIFF)
+project(DIRECTORYDIFFMERGE)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD 17)
-add_definitions(-UNDEBUG) # Enable assets even in Release
+add_definitions(-UNDEBUG) # Enable asserts even in Release
 
 ## Target
-set(DISKDIFF_SRCS main.cpp diskdiff.cpp extfs.cpp)
+set(DDM_SRCS main.cpp core.cpp extfs.cpp)
+add_executable(ddm ${DDM_SRCS})
+
 find_library(CRYPTOPP cryptopp)
-add_executable(diskdiff ${DISKDIFF_SRCS})
-target_link_libraries(diskdiff ${CRYPTOPP})
+target_link_libraries(ddm ${CRYPTOPP})
 set(BOOST_LIBS program_options)
 find_package(Boost COMPONENTS ${BOOST_LIBS} REQUIRED)
-target_link_libraries(diskdiff ${Boost_LIBRARIES})
+target_link_libraries(ddm ${Boost_LIBRARIES})
