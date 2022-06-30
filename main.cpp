@@ -51,7 +51,7 @@ bool ls(variables_map& vm)
     {
         DirectoryTree dt(vm["source"].as<string>());
         if(dt.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
-        dt.writeTo(getOutputFile());
+        getOutputFile()<<dt;
         return true;
     }
 
@@ -99,14 +99,7 @@ bool test(variables_map&)
     ifstream in(fileName);
     assert(in);
     DirectoryTree dt(in,fileName);
-    dt.writeTo(cout);
-
-//     string line;
-//     while(getline(cin,line))
-//     {
-//         FilesystemElement fe(line);
-//         fe.writeTo(cout);
-//     }
+    cout<<dt;
     return true;
 }
 

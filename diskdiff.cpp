@@ -189,7 +189,7 @@ void FilesystemElement::writeTo(ostream& os) const
             os<<symlink<<' ';
             break;
     }
-    os<<rp<<'\n';
+    os<<rp;
 }
 
 bool operator< (const FilesystemElement& a, const FilesystemElement& b)
@@ -301,7 +301,7 @@ void DirectoryTree::readFrom(istream& is, const string& diffFileName)
     add();
 }
 
-void DirectoryTree::writeTo(std::ostream& os)
+void DirectoryTree::writeTo(std::ostream& os) const
 {
     this->os=&os;
     printBreak=false;
@@ -359,10 +359,10 @@ void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
     }
 }
 
-void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes)
+void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes) const
 {
     if(printBreak) *os<<'\n';
-    for(auto&n : nodes) n.getElement().writeTo(*os);
+    for(auto&n : nodes) *os<<n.getElement()<<'\n';
     printBreak=nodes.empty()==false;
     for(auto&n : nodes)
     {
@@ -371,12 +371,16 @@ void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes)
     }
 }
 
+//
+// class DirectoryDiff
+//
+
 std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
 {
     for(auto& d : diff)
     {
-        if(d[0]) os<<"- "<<d[0].value();
-        if(d[1]) os<<"+ "<<d[1].value();
+        if(d[0]) os<<"- "<<d[0].value()<<'\n';
+        if(d[1]) os<<"+ "<<d[1].value()<<'\n';
         os<<'\n';
     }
     return os;

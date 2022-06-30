@@ -297,7 +297,7 @@ public:
      * Write the object to an ostream based on the diff file format
      * \param os ostream where to write
      */
-    void writeTo(std::ostream& os);
+    void writeTo(std::ostream& os) const;
     
     /**
      * Deallocate the entire directory tree
@@ -332,15 +332,26 @@ public:
 private:
     void recursiveBuildFromPath(const std::filesystem::path& p);
 
-    void recursiveWrite(const std::list<DirectoryNode>& nodes);
+    void recursiveWrite(const std::list<DirectoryNode>& nodes) const;
 
     bool unsupported=false;
     std::list<DirectoryNode> topContent;
     std::unordered_map<std::string,DirectoryNode*> index;
     std::filesystem::path topPath; // Only used by recursiveBuildFromPath
-    std::ostream *os=nullptr; //Only used by recursiveWrite
-    bool printBreak; //Only used by recursiveWrite
+    mutable std::ostream *os=nullptr; //Only used by recursiveWrite
+    mutable bool printBreak; //Only used by recursiveWrite
 };
+
+/**
+ * Write a DirectoryTree to an ostream based on the diff file format
+ * \param os ostream where to write
+ * \param e FilesystemElement to write
+ */
+inline std::ostream& operator<<(std::ostream& os, const DirectoryTree& dt)
+{
+    dt.writeTo(os);
+    return os;
+}
 
 /**
  * Type returned by compare2
