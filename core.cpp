@@ -46,7 +46,7 @@ string hashFile(const path& p)
 FilesystemElement::FilesystemElement()
     : ty(file_type::unknown), per(perms::unknown) {}
 
-FilesystemElement::FilesystemElement(const path& p, const path& top)
+FilesystemElement::FilesystemElement(const path& p, const path& top, ScanOpt opt)
     : rp(p.lexically_relative(top))
 {
     auto s=ext_symlink_status(p);
@@ -60,7 +60,7 @@ FilesystemElement::FilesystemElement(const path& p, const path& top)
     {
         case file_type::regular:
             sz=s.file_size();
-            fileHash=hashFile(p);
+            if(opt==ScanOpt::ComputeHash) fileHash=hashFile(p);
             break;
         case file_type::directory:
             break;
@@ -134,7 +134,9 @@ void FilesystemElement::readFrom(const string& metadataLine,
             in>>sz;
             if(!in) fail("Error reading size");
             in>>fileHash;
-            if(!in || fileHash.size()!=40) fail("Error reading hash");
+            if(!in) fail("Error reading hash");
+            if(fileHash=="*") fileHash.clear(); // * means omitted hash
+            else if(fileHash.size()!=40) fail("Error reading hash");
             break;
         case file_type::symlink:
             in>>symlink;
@@ -183,7 +185,9 @@ void FilesystemElement::writeTo(ostream& os) const
     switch(ty)
     {
         case file_type::regular:
-            os<<sz<<' '<<fileHash<<' ';
+            //Print * instead of hash when omitted
+            if(fileHash.empty()) os<<sz<<" * ";
+            else os<<sz<<' '<<fileHash<<' ';
             break;
         case file_type::symlink:
             os<<symlink<<' ';
@@ -201,9 +205,12 @@ bool operator< (const FilesystemElement& a, const FilesystemElement& b)
 
 bool operator== (const FilesystemElement& a, const FilesystemElement& b)
 {
+    // NOTE: either a or b may have been constructed with file has computation
+    // omitted. So if either has an empty hash, this does not cause them to
+    // not be equal, but if both have a hash, they must be the same
     return a.ty==b.ty && a.per==b.per && a.us==b.us && a.gs==b.gs
-        && a.mt==b.mt && a.sz==b.sz   && a.fileHash == b.fileHash
-        && a.rp==b.rp && a.symlink==b.symlink;
+        && a.mt==b.mt && a.sz==b.sz   && a.rp==b.rp && a.symlink==b.symlink
+        && (a.fileHash.empty() || b.fileHash.empty() || a.fileHash == b.fileHash);
 }
 
 //
@@ -221,13 +228,13 @@ list<DirectoryNode>& DirectoryNode::setDirectoryContent(list<DirectoryNode>&& co
 // class DirectoryTree
 //
 
-void DirectoryTree::scanDirectory(const path& topPath)
+void DirectoryTree::scanDirectory(const path& topPath, ScanOpt opt)
 {
     clear();
+    this->opt=opt;
     this->topPath=absolute(topPath);
     if(!is_directory(this->topPath))
         throw logic_error(topPath.string()+" is not a directory");
-    unsupported=false;
     recursiveBuildFromPath(this->topPath);
     this->topPath.clear();
 }
@@ -264,16 +271,8 @@ void DirectoryTree::readFrom(istream& is, const string& metadataFileName)
             if(p!=e.relativePath().parent_path()) fail("different paths grouped");
             auto inserted=index.insert({e.relativePath().string(),&n});
             if(inserted.second==false) fail("index insert failed (duplicate?)");
-            if(e.type()==file_type::unknown)
-            {
-                cerr<<"Warning: "<<e.relativePath()<<" has unsupported file type\n";
-                unsupported=true;
-            }
-            if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
-            {
-                cerr<<"Warning: "<<e.relativePath()<<" has multiple hardlinks ("<<e.hardLinkCount()<<")\n";
-                unsupported=true;
-            }
+            if(e.type()==file_type::unknown && warningCallback)
+                warningCallback(string("Warning: ")+e.relativePath().string()+" unsupported file type");
         }
         if(topContent.empty())
         {
@@ -312,7 +311,6 @@ void DirectoryTree::writeTo(std::ostream& os) const
 
 void DirectoryTree::clear()
 {
-    unsupported=false;
     topPath.clear();
     topContent.clear();
     index.clear();
@@ -322,7 +320,7 @@ void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
 {
     list<DirectoryNode> nodes, *nodesPtr;
     for(auto& it : directory_iterator(topPath / p))
-        nodes.push_back(DirectoryNode(FilesystemElement(it.path(),topPath)));
+        nodes.push_back(DirectoryNode(FilesystemElement(it.path(),topPath,opt)));
     nodes.sort();
     if(topContent.empty())
     {
@@ -339,16 +337,10 @@ void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
         auto& e=n.getElement();
         auto inserted=index.insert({e.relativePath().string(),&n});
         assert(inserted.second==true);
-        if(e.type()==file_type::unknown)
-        {
-            cerr<<"Warning: "<<e.relativePath()<<" has unsupported file type\n";
-            unsupported=true;
-        }
-        if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
-        {
-            cerr<<"Warning: "<<e.relativePath()<<" has multiple hardlinks ("<<e.hardLinkCount()<<")\n";
-            unsupported=true;
-        }
+        if(e.type()==file_type::unknown && warningCallback)
+            warningCallback(string("Warning: ")+e.relativePath().string()+" unsupported file type");
+        if(e.type()!=file_type::directory && e.hardLinkCount()!=1 && warningCallback)
+            warningCallback(string("Warning: ")+e.relativePath().string()+" has multiple hardlinks");
     }
 
     for(auto& n : *nodesPtr)

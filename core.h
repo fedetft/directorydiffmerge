@@ -34,6 +34,15 @@
 std::string hashFile(const std::filesystem::path& p);
 
 /**
+ * Directory tree scanning options
+ */
+enum class ScanOpt
+{
+    ComputeHash, ///< When scanning directories, compute file hashes
+    OmitHash     ///< When scanning directories, omit file hash computation
+};
+
+/**
  * This class is used to load/store information about files and directories
  * in metadata files
  */
@@ -49,9 +58,11 @@ public:
      * Constructor from a path
      * \param p absolute path
      * \param top top level directory, used to compute relative path
+     * \param opt scan options
      */
     FilesystemElement(const std::filesystem::path& p,
-                      const std::filesystem::path& top);
+                      const std::filesystem::path& top,
+                      ScanOpt opt);
 
     /**
      * Constructor from string, used when reading from metadata files
@@ -249,10 +260,12 @@ public:
      * \param inputPath if the path is to a directory, use it as the top level
      * directory where to start the directory tree, if it is a file path, assume
      * it is a path to a metadata file
+     * \param opt scan options
      */
-    DirectoryTree(const std::filesystem::path& inputPath)
+    DirectoryTree(const std::filesystem::path& inputPath,
+                  ScanOpt opt=ScanOpt::ComputeHash)
     {
-        fromPath(inputPath);
+        fromPath(inputPath,opt);
     }
     
     /**
@@ -266,22 +279,35 @@ public:
     }
 
     /**
+     * Set the warning callback, that is called when scanning directories or
+     * reading metadata files
+     */
+    void setWarningCallback(std::function<void (const std::string&)> cb)
+    {
+        warningCallback=cb;
+    }
+
+    /**
      * Construct a directory tree from either a metadata file or a directory
      * \param inputPath if the path is to a directory, use it as the top level
      * directory where to start the directory tree, if it is a file path, assume
      * it is a path to a metadata file
+     * \param opt scan options
      */
-    void fromPath(const std::filesystem::path& inputPath)
+    void fromPath(const std::filesystem::path& inputPath,
+                  ScanOpt opt=ScanOpt::ComputeHash)
     {
-        if(is_directory(inputPath)) scanDirectory(inputPath);
+        if(is_directory(inputPath)) scanDirectory(inputPath,opt);
         else readFrom(inputPath);
     }
 
     /**
      * Scan directory tree starting from the given top path
      * \param topPath top level directory where to start the directory tree
+     * \param opt scan options
      */
-    void scanDirectory(const std::filesystem::path& topPath);
+    void scanDirectory(const std::filesystem::path& topPath,
+                       ScanOpt opt=ScanOpt::ComputeHash);
 
     /**
      * Read from metadata files
@@ -308,12 +334,6 @@ public:
     void clear();
 
     /**
-     * \return true if the last listFiles call encountered unsupported file
-     * types
-     */
-    bool unsupportedFilesFound() const { return unsupported; }
-
-    /**
      * \return the root of the directory tree, containing the content of the top
      * directory and all its subfolders, if any
      * NOTE: since all ellements are stored by value this may be a very
@@ -337,12 +357,13 @@ private:
 
     void recursiveWrite(const std::list<DirectoryNode>& nodes) const;
 
-    bool unsupported=false;
     std::list<DirectoryNode> topContent;
     std::unordered_map<std::string,DirectoryNode*> index;
-    std::filesystem::path topPath; // Only used by recursiveBuildFromPath
-    mutable std::ostream *os=nullptr; //Only used by recursiveWrite
-    mutable bool printBreak; //Only used by recursiveWrite
+    std::function<void (const std::string&)> warningCallback;
+    ScanOpt opt;                      // Only used by recursiveBuildFromPath
+    std::filesystem::path topPath;    // Only used by recursiveBuildFromPath
+    mutable std::ostream *os=nullptr; // Only used by recursiveWrite
+    mutable bool printBreak;          // Only used by recursiveWrite
 };
 
 /**

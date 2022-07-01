@@ -44,8 +44,10 @@ Legend:
 
 Usage:
 ddm ls <dir>                        # List directory, write metadata to stdout
+ddm ls <dir> -n                     # List directory, omit hash computation
 ddm ls <dir> -o <met>               # List directory, write metadata to file
 ddm diff <d|m> <d|m>                # Diff directories or metadata, write stdout
+ddm diff <d|m> <d|m> -n             # Diff directories (omit hash) or metadata
 ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
 ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
@@ -74,14 +76,18 @@ int ls(variables_map& vm, ostream& out)
         cerr<<R"(ddm ls
 Usage:
 ddm ls <dir>                        # List directory, write metadata to stdout
+ddm ls <dir> -n                     # List directory, omit hash computation
 ddm ls <dir> -o <met>               # List directory, write metadata to file
 )";
         return 100;
     }
 
+    ScanOpt opt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
     DirectoryTree dt;
-    dt.scanDirectory(inputs.empty() ? "." : inputs.at(0));
-    if(dt.unsupportedFilesFound()) cerr<<"Warning: unsupported files found\n";
+    dt.setWarningCallback([](const string& message){
+        cerr<<message<<'\n';
+    });
+    dt.scanDirectory(inputs.empty() ? "." : inputs.at(0), opt);
     out<<dt;
     return 0;
 }
@@ -100,6 +106,7 @@ int diff(variables_map& vm, ostream& out)
         cerr<<R"(ddm diff
 Usage:
 ddm diff <d|m> <d|m>                # Diff directories or metadata, write stdout
+ddm diff <d|m> <d|m> -n             # Diff directories (omit hash) or metadata
 ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
 ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
@@ -110,10 +117,15 @@ ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
     //TODO: handle the ignore option
     if(inputs.size()==2)
     {
-        DirectoryTree a(inputs.at(0));
-        DirectoryTree b(inputs.at(1));
-        if(a.unsupportedFilesFound() || b.unsupportedFilesFound())
-            cerr<<"Warning: unsupported files found\n";
+        auto warningCallback=[](const string& message){
+            cerr<<message<<'\n';
+        };
+        ScanOpt opt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
+        DirectoryTree a,b;
+        a.setWarningCallback(warningCallback);
+        b.setWarningCallback(warningCallback);
+        a.fromPath(inputs.at(0),opt);
+        b.fromPath(inputs.at(1),opt);
         auto diff=compare2(a,b);
         out<<diff;
         return diff.size()==0 ? 0 : 1; //Allow to check if differences found
@@ -140,6 +152,7 @@ int main(int argc, char *argv[])
         ("target,t", value<string>(), "target")
         ("ignore,i", value<string>(), "ignore")
         ("output,o", value<string>(), "output")
+        ("nohash,n", "omit hash computation")
         ("input",    value<vector<string>>(), "input")
     ;
     positional_options_description p;
