@@ -40,6 +40,29 @@ string hashFile(const path& p)
 }
 
 //
+// class CompareOpt
+//
+
+CompareOpt::CompareOpt(const string& ignoreString)
+{
+    auto s=ignoreString;
+    replace(begin(s),end(s),',',' ');
+    istringstream ss(s);
+    string line;
+    while(getline(ss,line))
+    {
+        if(line=="perm")         perm=false;
+        else if(line=="owner")   owner=false;
+        else if(line=="mtime")   mtime=false;
+        else if(line=="size")    size=false;
+        else if(line=="hash")    hash=false;
+        else if(line=="symlink") symlink=false;
+        else if(line=="all")     perm=owner=mtime=size=hash=symlink=false;
+        else throw runtime_error(string("Ignore option ")+line+" not valid");
+    }
+}
+
+//
 // class FilesystemElement
 //
 
@@ -211,6 +234,22 @@ bool operator== (const FilesystemElement& a, const FilesystemElement& b)
     return a.ty==b.ty && a.per==b.per && a.us==b.us && a.gs==b.gs
         && a.mt==b.mt && a.sz==b.sz   && a.rp==b.rp && a.symlink==b.symlink
         && (a.fileHash.empty() || b.fileHash.empty() || a.fileHash == b.fileHash);
+}
+
+bool compare(const FilesystemElement& a, const FilesystemElement& b,
+             const CompareOpt& opt)
+{
+    if(a.ty!=b.ty || a.rp!=b.rp) return false;
+    if(opt.perm    && a.per!=b.per) return false;
+    if(opt.owner   && (a.us!=b.us || a.gs!=b.gs)) return false;
+    if(opt.mtime   && a.mt!=b.mt) return false;
+    if(opt.size    && a.sz!=b.sz) return false;
+    // NOTE: either a or b may have been constructed with file has computation
+    // omitted. Only compare hashes if both have them
+    if(opt.hash    && a.fileHash != b.fileHash
+                   && !a.fileHash.empty() && !b.fileHash.empty()) return false;
+    if(opt.symlink && a.symlink!=b.symlink) return false;
+    return true;
 }
 
 //
@@ -385,14 +424,16 @@ std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
 class Compare2Helper
 {
 public:
-    Compare2Helper(const DirectoryTree& a, const DirectoryTree& b)
-        : aIndex(a.getIndex()), bIndex(b.getIndex()) {}
+    Compare2Helper(const DirectoryTree& a, const DirectoryTree& b,
+                   const CompareOpt& opt)
+        : aIndex(a.getIndex()), bIndex(b.getIndex()), opt(opt) {}
 
     void recursiveCompare(const list<DirectoryNode>& a,
                           const list<DirectoryNode>& b);
 
     const unordered_map<string,DirectoryNode*>& aIndex;
     const unordered_map<string,DirectoryNode*>& bIndex;
+    const CompareOpt opt;
     DirectoryDiff<2> result;
 };
 
@@ -411,7 +452,7 @@ void Compare2Helper::recursiveCompare(const list<DirectoryNode>& a,
         {
             auto& ae=ita->second->getElement();
             auto& be=itb->second->getElement();
-            if(ae!=be) result.push_back({ae,be});
+            if(compare(ae,be,opt)==false) result.push_back({ae,be});
             // Pruning comparison, only go down common directories
             // that's only possible in 2 way compare
             if(ae.isDirectory() && be.isDirectory())
@@ -428,9 +469,10 @@ void Compare2Helper::recursiveCompare(const list<DirectoryNode>& a,
                          dirs[1]->getDirectoryContent());
 }
 
-DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b)
+DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b,
+                          const CompareOpt& opt)
 {
-    Compare2Helper cmp(a,b);
+    Compare2Helper cmp(a,b,opt);
     cmp.recursiveCompare(a.getTreeRoot(),b.getTreeRoot());
     return std::move(cmp.result);
 }

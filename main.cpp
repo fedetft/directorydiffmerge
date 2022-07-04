@@ -40,7 +40,7 @@ Legend:
 <d|m> : either directory or metadata file
 <dif> : diff file
 <ign> : list of metadata to ignore
-        one or more of {perm,user,group,mtime,size,hash}
+        one or more of {perm,owner,mtime,size,hash,symlink,all}
 
 Usage:
 ddm ls <dir>                        # List directory, write metadata to stdout
@@ -49,8 +49,8 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
 ddm diff <d|m> <d|m>                # Diff directories or metadata, write stdout
 ddm diff <d|m> <d|m> -n             # Diff directories (omit hash) or metadata
 ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
-ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
+ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 
 ddm scrub <dir> <met> <met>         # Check for bit rot, correct if possible
 ddm backup -s <dir> -t <dir>        # Backup source dir (readonly) to target dir
@@ -108,25 +108,27 @@ Usage:
 ddm diff <d|m> <d|m>                # Diff directories or metadata, write stdout
 ddm diff <d|m> <d|m> -n             # Diff directories (omit hash) or metadata
 ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
-ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
+ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 )";
         return 100;
     }
 
-    //TODO: handle the ignore option
+    CompareOpt copt;
+    if(vm.count("ignore")) copt=CompareOpt(vm["ignore"].as<string>());
+
     if(inputs.size()==2)
     {
         auto warningCallback=[](const string& message){
             cerr<<message<<'\n';
         };
-        ScanOpt opt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
+        ScanOpt sopt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
         DirectoryTree a,b;
         a.setWarningCallback(warningCallback);
         b.setWarningCallback(warningCallback);
-        a.fromPath(inputs.at(0),opt);
-        b.fromPath(inputs.at(1),opt);
-        auto diff=compare2(a,b);
+        a.fromPath(inputs.at(0),sopt);
+        b.fromPath(inputs.at(1),sopt);
+        auto diff=compare2(a,b,copt);
         out<<diff;
         return diff.size()==0 ? 0 : 1; //Allow to check if differences found
     } else {

@@ -43,6 +43,23 @@ enum class ScanOpt
 };
 
 /**
+ * Compare options for directory tree comparisons
+ */
+class CompareOpt
+{
+public:
+    CompareOpt() {}
+    CompareOpt(const std::string& ignoreString);
+
+    bool perm=true;    ///< Compare file permissions (rwxrwxrwx)
+    bool owner=true;   ///< Compare file owner/group
+    bool mtime=true;   ///< Compare last modified time
+    bool size=true;    ///< Compare file size
+    bool hash=true;    ///< Compare file hash
+    bool symlink=true; ///< Compare symlink targets
+};
+
+/**
  * This class is used to load/store information about files and directories
  * in metadata files
  */
@@ -169,6 +186,8 @@ private:
     uintmax_t hardLinkCnt=1;       ///< Number of hardlinks
 
     friend bool operator== (const FilesystemElement& a, const FilesystemElement& b);
+    friend bool compare(const FilesystemElement& a, const FilesystemElement& b,
+                        const CompareOpt& opt);
 };
 
 /**
@@ -185,6 +204,12 @@ inline bool operator!= (const FilesystemElement& a, const FilesystemElement& b)
 {
     return !(a==b);
 }
+
+/**
+ * Compare two FilesystemElement according to the given options
+ */
+bool compare(const FilesystemElement& a, const FilesystemElement& b,
+             const CompareOpt& opt);
 
 /**
  * Write a FilesystemElement to an ostream based on the metadata file format
@@ -395,4 +420,5 @@ std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff);
 /**
  * Two way diff between two directory trees
  */
-DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b);
+DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b,
+                          const CompareOpt& opt=CompareOpt());
