@@ -418,15 +418,32 @@ std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
     return os;
 }
 
+std::ostream& operator<<(std::ostream& os, const DirectoryDiff<3>& diff)
+{
+    for(auto& d : diff)
+    {
+        if(d[0]) os<<"a "<<d[0].value()<<'\n';
+        if(d[1]) os<<"b "<<d[1].value()<<'\n';
+        if(d[2]) os<<"c "<<d[2].value()<<'\n';
+        os<<'\n';
+    }
+    return os;
+}
+
 /**
- * Helper class to implement compare2 recursively
+ * Helper class to implement diff2 recursively
  */
-class Compare2Helper
+class Diff2Helper
 {
 public:
-    Compare2Helper(const DirectoryTree& a, const DirectoryTree& b,
-                   const CompareOpt& opt)
+    Diff2Helper(const DirectoryTree& a, const DirectoryTree& b,
+                const CompareOpt& opt)
         : aIndex(a.getIndex()), bIndex(b.getIndex()), opt(opt) {}
+
+    Diff2Helper(const unordered_map<string,DirectoryNode*>& aIndex,
+                const unordered_map<string,DirectoryNode*>& bIndex,
+                const CompareOpt& opt)
+        : aIndex(aIndex), bIndex(bIndex), opt(opt) {}
 
     void recursiveCompare(const list<DirectoryNode>& a,
                           const list<DirectoryNode>& b);
@@ -437,8 +454,8 @@ public:
     DirectoryDiff<2> result;
 };
 
-void Compare2Helper::recursiveCompare(const list<DirectoryNode>& a,
-        const list<DirectoryNode>& b)
+void Diff2Helper::recursiveCompare(const list<DirectoryNode>& a,
+                                   const list<DirectoryNode>& b)
 {
     unordered_set<string> itemNames;
     for(auto& n : a) itemNames.insert(n.getElement().relativePath().string());
@@ -453,8 +470,8 @@ void Compare2Helper::recursiveCompare(const list<DirectoryNode>& a,
             auto& ae=ita->second->getElement();
             auto& be=itb->second->getElement();
             if(compare(ae,be,opt)==false) result.push_back({ae,be});
+
             // Pruning comparison, only go down common directories
-            // that's only possible in 2 way compare
             if(ae.isDirectory() && be.isDirectory())
                 commonDrectories.push_back({ita->second,itb->second});
         } else if(ita==aIndex.end() && itb!=bIndex.end()) {
@@ -469,10 +486,137 @@ void Compare2Helper::recursiveCompare(const list<DirectoryNode>& a,
                          dirs[1]->getDirectoryContent());
 }
 
-DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b,
-                          const CompareOpt& opt)
+DirectoryDiff<2> diff2(const DirectoryTree& a, const DirectoryTree& b,
+                       const CompareOpt& opt)
 {
-    Compare2Helper cmp(a,b,opt);
+    Diff2Helper cmp(a,b,opt);
     cmp.recursiveCompare(a.getTreeRoot(),b.getTreeRoot());
+    return std::move(cmp.result);
+}
+
+/**
+ * Helper class to implement diff3 recursively
+ */
+class Diff3Helper
+{
+public:
+    Diff3Helper(const DirectoryTree& a, const DirectoryTree& b,
+                const DirectoryTree& c, const CompareOpt& opt)
+        : aIndex(a.getIndex()), bIndex(b.getIndex()), cIndex(c.getIndex()),
+          opt(opt) {}
+
+    void recursiveCompare(const list<DirectoryNode>& a,
+                          const list<DirectoryNode>& b,
+                          const list<DirectoryNode>& c);
+
+    const unordered_map<string,DirectoryNode*>& aIndex;
+    const unordered_map<string,DirectoryNode*>& bIndex;
+    const unordered_map<string,DirectoryNode*>& cIndex;
+    const CompareOpt opt;
+    DirectoryDiff<3> result;
+};
+
+void Diff3Helper::recursiveCompare(const list<DirectoryNode>& a,
+                                   const list<DirectoryNode>& b,
+                                   const list<DirectoryNode>& c)
+{
+    unordered_set<string> itemNames;
+    for(auto& n : a) itemNames.insert(n.getElement().relativePath().string());
+    for(auto& n : b) itemNames.insert(n.getElement().relativePath().string());
+    for(auto& n : c) itemNames.insert(n.getElement().relativePath().string());
+    list<array<DirectoryNode*,3>> commonDrectories;
+    for(auto& itn : itemNames)
+    {
+        auto ita=aIndex.find(itn);
+        auto itb=bIndex.find(itn);
+        auto itc=cIndex.find(itn);
+        array<unordered_map<string,DirectoryNode*>::const_iterator,3> existing;
+        int numExisting=0;
+        if(ita!=aIndex.end()) existing[numExisting++]=ita;
+        if(itb!=bIndex.end()) existing[numExisting++]=itb;
+        if(itc!=cIndex.end()) existing[numExisting++]=itc;
+        assert(numExisting>0);
+        if(numExisting==3)
+        {
+            auto& ae=ita->second->getElement();
+            auto& be=itb->second->getElement();
+            auto& ce=itc->second->getElement();
+            bool ab=compare(ae,be,opt);
+            bool bc=compare(be,ce,opt);
+            if(ab==false || bc==false) result.push_back({ae,be,ce});
+            else assert(compare(ae,ce,opt)); //Transitive property check
+
+            int numDirs=0;
+            if(ae.isDirectory()) numDirs++;
+            if(be.isDirectory()) numDirs++;
+            if(ce.isDirectory()) numDirs++;
+            //Pruning comparison, only go down if more than one directory
+            if(numDirs>=2)
+                commonDrectories.push_back({
+                    ae.isDirectory() ? ita->second : nullptr,
+                    be.isDirectory() ? itb->second : nullptr,
+                    ce.isDirectory() ? itc->second : nullptr
+                });
+        } else {
+            //At least one element is missing, it's always a difference
+            #define OP(x) optional<FilesystemElement>(x)
+            result.push_back({
+                ita!=aIndex.end() ? OP(ita->second->getElement()) : nullopt,
+                itb!=bIndex.end() ? OP(itb->second->getElement()) : nullopt,
+                itc!=cIndex.end() ? OP(itc->second->getElement()) : nullopt
+            });
+            #undef OP
+
+            //Pruning comparison, only go down if more than one directory
+            if(numExisting==2 &&
+               existing[0]->second->getElement().isDirectory() &&
+               existing[1]->second->getElement().isDirectory())
+                    commonDrectories.push_back({
+                        ita!=aIndex.end() ? ita->second : nullptr,
+                        itb!=bIndex.end() ? itb->second : nullptr,
+                        itc!=cIndex.end() ? itc->second : nullptr
+                    });
+        }
+    }
+    itemNames.clear(); //Save memory while doing recursion
+    for(auto& dirs : commonDrectories)
+    {
+        if(dirs[0] && dirs[1] && dirs[2])
+        {
+            //Three non-null directories, continue 3-way diff
+            recursiveCompare(dirs[0]->getDirectoryContent(),
+                             dirs[1]->getDirectoryContent(),
+                             dirs[2]->getDirectoryContent());
+        } else {
+            //One directory is null, problem reduces to a 2-way diff
+            if(dirs[0]==nullptr)
+            {
+                assert(dirs[1] && dirs[2]);
+                Diff2Helper cmp(bIndex,cIndex,opt);
+                cmp.recursiveCompare(dirs[1]->getDirectoryContent(),
+                                     dirs[2]->getDirectoryContent());
+                for(auto& r : cmp.result) result.push_back({nullopt,r[0],r[1]});
+            } else if(dirs[1]==nullptr) {
+                assert(dirs[0] && dirs[2]);
+                Diff2Helper cmp(aIndex,cIndex,opt);
+                cmp.recursiveCompare(dirs[0]->getDirectoryContent(),
+                                     dirs[2]->getDirectoryContent());
+                for(auto& r : cmp.result) result.push_back({r[0],nullopt,r[1]});
+            } else if(dirs[2]==nullptr) {
+                assert(dirs[0] && dirs[1]);
+                Diff2Helper cmp(aIndex,bIndex,opt);
+                cmp.recursiveCompare(dirs[0]->getDirectoryContent(),
+                                     dirs[1]->getDirectoryContent());
+                for(auto& r : cmp.result) result.push_back({r[0],r[1],nullopt});
+            }
+        }
+    }
+}
+
+DirectoryDiff<3> diff3(const DirectoryTree& a, const DirectoryTree& b,
+                       const DirectoryTree& c, const CompareOpt& opt)
+{
+    Diff3Helper cmp(a,b,c,opt);
+    cmp.recursiveCompare(a.getTreeRoot(),b.getTreeRoot(),c.getTreeRoot());
     return std::move(cmp.result);
 }

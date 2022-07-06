@@ -403,7 +403,7 @@ inline std::ostream& operator<<(std::ostream& os, const DirectoryTree& dt)
 }
 
 /**
- * Type returned by compare2
+ * Type returned by diff operations
  * First element of the pair is a FilesystemElement of the A tree
  * Second element of the pair is a FilesystemElement of the B tree
  */
@@ -418,7 +418,21 @@ using DirectoryDiff=std::list<std::array<std::optional<FilesystemElement>,N>>;
 std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff);
 
 /**
+ * Print a diff to an ostream based on the diff file format
+ * \param os ostream where to write
+ * \param diff diff to write
+ */
+std::ostream& operator<<(std::ostream& os, const DirectoryDiff<3>& diff);
+
+/**
  * Two way diff between two directory trees
  */
-DirectoryDiff<2> compare2(const DirectoryTree& a, const DirectoryTree& b,
-                          const CompareOpt& opt=CompareOpt());
+DirectoryDiff<2> diff2(const DirectoryTree& a, const DirectoryTree& b,
+                       const CompareOpt& opt=CompareOpt());
+
+/**
+ * Two way diff between two directory trees
+ */
+DirectoryDiff<3> diff3(const DirectoryTree& a, const DirectoryTree& b,
+                       const DirectoryTree& c, const CompareOpt& opt=CompareOpt());
+

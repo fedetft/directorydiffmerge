@@ -114,26 +114,35 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
         return 100;
     }
 
+    ScanOpt sopt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
     CompareOpt copt;
     if(vm.count("ignore")) copt=CompareOpt(vm["ignore"].as<string>());
 
+    auto warningCallback=[](const string& message){
+        cerr<<message<<'\n';
+    };
+
     if(inputs.size()==2)
     {
-        auto warningCallback=[](const string& message){
-            cerr<<message<<'\n';
-        };
-        ScanOpt sopt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
         DirectoryTree a,b;
         a.setWarningCallback(warningCallback);
         b.setWarningCallback(warningCallback);
         a.fromPath(inputs.at(0),sopt);
         b.fromPath(inputs.at(1),sopt);
-        auto diff=compare2(a,b,copt);
+        auto diff=diff2(a,b,copt);
         out<<diff;
         return diff.size()==0 ? 0 : 1; //Allow to check if differences found
     } else {
-        //TODO: 3-way diff
-        return 1;
+        DirectoryTree a,b,c;
+        a.setWarningCallback(warningCallback);
+        b.setWarningCallback(warningCallback);
+        c.setWarningCallback(warningCallback);
+        a.fromPath(inputs.at(0),sopt);
+        b.fromPath(inputs.at(1),sopt);
+        c.fromPath(inputs.at(2),sopt);
+        auto diff=diff3(a,b,c,copt);
+        out<<diff;
+        return diff.size()==0 ? 0 : 1; //Allow to check if differences found
     }
 }
 
