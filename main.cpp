@@ -30,7 +30,7 @@ using namespace boost::program_options;
 /**
  * Print help and terminate the program
  */
-void help()
+static void help()
 {
     cerr<<R"(ddm: DirectoryDiffMerge tool
 
@@ -41,6 +41,7 @@ Legend:
 <dif> : diff file
 <ign> : list of metadata to ignore
         one or more of {perm,owner,mtime,size,hash,symlink,all}
+        (when using 'all' only the presence of a file and its type matters)
 
 Usage:
 ddm ls <dir>                        # List directory, write metadata to stdout
@@ -63,9 +64,17 @@ ddm sync -s <d|m> -t <d|m> -o <dir> # ??? TODO
 }
 
 /**
+ * Print a warning
+ */
+static void printWarning(const string& message)
+{
+    cerr<<message<<'\n';
+}
+
+/**
  * ddm ls command
  */
-int ls(variables_map& vm, ostream& out)
+static int ls(variables_map& vm, ostream& out)
 {
     vector<string> inputs;
     if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
@@ -84,9 +93,7 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
 
     ScanOpt opt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
     DirectoryTree dt;
-    dt.setWarningCallback([](const string& message){
-        cerr<<message<<'\n';
-    });
+    dt.setWarningCallback(printWarning);
     dt.scanDirectory(inputs.empty() ? "." : inputs.at(0), opt);
     out<<dt;
     return 0;
@@ -95,7 +102,7 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
 /**
  * ddm diff command
  */
-int diff(variables_map& vm, ostream& out)
+static int diff(variables_map& vm, ostream& out)
 {
     vector<string> inputs;
     if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
@@ -118,15 +125,11 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
     CompareOpt copt;
     if(vm.count("ignore")) copt=CompareOpt(vm["ignore"].as<string>());
 
-    auto warningCallback=[](const string& message){
-        cerr<<message<<'\n';
-    };
-
     if(inputs.size()==2)
     {
         DirectoryTree a,b;
-        a.setWarningCallback(warningCallback);
-        b.setWarningCallback(warningCallback);
+        a.setWarningCallback(printWarning);
+        b.setWarningCallback(printWarning);
         a.fromPath(inputs.at(0),sopt);
         b.fromPath(inputs.at(1),sopt);
         auto diff=diff2(a,b,copt);
@@ -134,9 +137,9 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
         return diff.size()==0 ? 0 : 1; //Allow to check if differences found
     } else {
         DirectoryTree a,b,c;
-        a.setWarningCallback(warningCallback);
-        b.setWarningCallback(warningCallback);
-        c.setWarningCallback(warningCallback);
+        a.setWarningCallback(printWarning);
+        b.setWarningCallback(printWarning);
+        c.setWarningCallback(printWarning);
         a.fromPath(inputs.at(0),sopt);
         b.fromPath(inputs.at(1),sopt);
         c.fromPath(inputs.at(2),sopt);
@@ -164,7 +167,7 @@ int main(int argc, char *argv[])
         ("ignore,i", value<string>(), "ignore")
         ("output,o", value<string>(), "output")
         ("nohash,n", "omit hash computation")
-        ("input",    value<vector<string>>(), "input")
+        ("input",    value<vector<string>>(), "input") //Positional catch-all
     ;
     positional_options_description p;
     p.add("input", -1);
