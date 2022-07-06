@@ -411,8 +411,8 @@ std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
 {
     for(auto& d : diff)
     {
-        if(d[0]) os<<"- "<<d[0].value()<<'\n';
-        if(d[1]) os<<"+ "<<d[1].value()<<'\n';
+        if(d[0]) os<<"- "<<d[0].value()<<'\n'; else os<<"- /dev/null\n";
+        if(d[1]) os<<"+ "<<d[1].value()<<'\n'; else os<<"+ /dev/null\n";
         os<<'\n';
     }
     return os;
@@ -422,9 +422,9 @@ std::ostream& operator<<(std::ostream& os, const DirectoryDiff<3>& diff)
 {
     for(auto& d : diff)
     {
-        if(d[0]) os<<"a "<<d[0].value()<<'\n';
-        if(d[1]) os<<"b "<<d[1].value()<<'\n';
-        if(d[2]) os<<"c "<<d[2].value()<<'\n';
+        if(d[0]) os<<"a "<<d[0].value()<<'\n'; else os<<"a /dev/null\n";
+        if(d[1]) os<<"b "<<d[1].value()<<'\n'; else os<<"b /dev/null\n";
+        if(d[2]) os<<"c "<<d[2].value()<<'\n'; else os<<"c /dev/null\n";
         os<<'\n';
     }
     return os;
