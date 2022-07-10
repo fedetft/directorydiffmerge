@@ -76,8 +76,8 @@ static void printWarning(const string& message)
  */
 static int ls(variables_map& vm, ostream& out)
 {
-    vector<string> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
+    vector<filesystem::path> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<filesystem::path>>();
 
     if(vm.count("help")   || vm.count("source") || vm.count("target")
     || vm.count("ignore") || inputs.size()>1)
@@ -104,8 +104,8 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
  */
 static int diff(variables_map& vm, ostream& out)
 {
-    vector<string> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
+    vector<filesystem::path> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<filesystem::path>>();
 
     if(vm.count("help") || vm.count("source") || vm.count("target")
     || inputs.size()<2 || inputs.size()>3)
@@ -162,12 +162,12 @@ int main(int argc, char *argv[])
     options_description desc("options");
     desc.add_options()
         ("help,h",   "prints this")
-        ("source,s", value<string>(), "source")
-        ("target,t", value<string>(), "target")
+        ("source,s", value<filesystem::path>(), "source")
+        ("target,t", value<filesystem::path>(), "target")
         ("ignore,i", value<string>(), "ignore")
-        ("output,o", value<string>(), "output")
+        ("output,o", value<filesystem::path>(), "output")
         ("nohash,n", "omit hash computation")
-        ("input",    value<vector<string>>(), "input") //Positional catch-all
+        ("input",    value<vector<filesystem::path>>(), "input") //Positional catch-all
     ;
     positional_options_description p;
     p.add("input", -1);
@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
     ofstream outfile;
     if(vm.count("output"))
     {
-        string outFileName=vm["output"].as<string>();
+        auto outFileName=vm["output"].as<filesystem::path>();
         if(exists(outFileName))
         {
             cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
