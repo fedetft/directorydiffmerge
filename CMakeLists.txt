@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 add_definitions(-UNDEBUG) # Enable asserts even in Release
 
 ## Target
-set(DDM_SRCS main.cpp core.cpp extfs.cpp)
+set(DDM_SRCS main.cpp backup.cpp core.cpp extfs.cpp)
 add_executable(ddm ${DDM_SRCS})
 
 find_library(CRYPTOPP cryptopp)

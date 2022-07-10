@@ -24,6 +24,7 @@
 #include <array>
 #include <optional>
 #include <unordered_map>
+#include <functional>
 #include <ctime>
 
 /**

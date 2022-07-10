@@ -19,9 +19,9 @@
 #include <fstream>
 #include <vector>
 #include <map>
-#include <functional>
 #include <boost/program_options.hpp>
 #include "core.h"
+#include "backup.h"
 
 using namespace std;
 using namespace std::filesystem;
@@ -53,11 +53,16 @@ ddm diff <d|m> <d|m> -o <dif>       # Diff directories or metadata, write file
 ddm diff <d|m> <d|m> -i <ign>       # Diff ignoring certain metadata
 ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 
-ddm scrub <dir> <met> <met>         # Check for bit rot, correct if possible
-ddm backup -s <dir> -t <dir>        # Backup source dir (readonly) to target dir
-ddm backup -s <dir> -t <dir> <met> <met>  # Backup and update bit rot copies
-                                          # assumes meatadata is consistent,
-                                          # better do a scrub before
+ddm scrub <dir> <met> <met>             # Check for bit rot, correct if possible
+ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
+                                        # also checks source dir
+
+ddm backup -s <dir> -t <dir>                # Backup source dir to target dir
+ddm backup -s <dir> -t <dir> <met> <met>    # Backup and update bit rot copies
+                                            # also performs scrub of backup
+ddm backup -s <dir> -t <dir> <met> <met> -n # Backup and update bit rot copies
+                                            # perform no scrub nor hash check
+
 ddm sync -s <d|m> -t <d|m> -o <dir> # ??? TODO
 )";
     exit(100);
@@ -74,10 +79,10 @@ static void printWarning(const string& message)
 /**
  * ddm ls command
  */
-static int ls(variables_map& vm, ostream& out)
+static int lsCmd(variables_map& vm, ostream& out)
 {
-    vector<filesystem::path> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<filesystem::path>>();
+    vector<path> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
 
     if(vm.count("help")   || vm.count("source") || vm.count("target")
     || vm.count("ignore") || inputs.size()>1)
@@ -102,10 +107,10 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
 /**
  * ddm diff command
  */
-static int diff(variables_map& vm, ostream& out)
+static int diffCmd(variables_map& vm, ostream& out)
 {
-    vector<filesystem::path> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<filesystem::path>>();
+    vector<path> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
 
     if(vm.count("help") || vm.count("source") || vm.count("target")
     || inputs.size()<2 || inputs.size()>3)
@@ -149,6 +154,66 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
     }
 }
 
+/**
+ * ddm scrub command
+ */
+static int scrubCmd(variables_map& vm, ostream& out)
+{
+    vector<path> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
+
+    bool err=true;
+    if(!vm.count("help") && !vm.count("ignore") && !vm.count("nohash"))
+    {
+        if(vm.count("source") && vm.count("target") && inputs.size()==2)
+            err=false;
+        if(!vm.count("source") && !vm.count("target") && inputs.size()==3)
+            err=false;
+    }
+    if(err)
+    {
+        cerr<<R"(ddm diff
+Usage:
+ddm scrub <dir> <met> <met>             # Check for bit rot, correct if possible
+ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
+                                        # also checks source dir
+)";
+        return 100;
+    }
+
+    if(vm.count("source") && vm.count("target"))
+        return scrub(vm["source"].as<path>(),vm["target"].as<path>(),
+                     inputs[0],inputs[1],!vm.count("singlethread"));
+    else
+        return scrub(inputs[0],inputs[1],inputs[2]);
+}
+
+/**
+ * ddm backup command
+ */
+static int backupCmd(variables_map& vm, ostream& out)
+{
+    vector<path> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
+
+    if(vm.count("help") || vm.count("source") || vm.count("target")
+    || inputs.size()<2 || inputs.size()>3)
+    {
+        cerr<<R"(ddm diff
+Usage:
+ddm backup -s <dir> -t <dir>                # Backup source dir to target dir
+ddm backup -s <dir> -t <dir> <met> <met>    # Backup and update bit rot copies
+                                            # also performs scrub of backup
+ddm backup -s <dir> -t <dir> <met> <met> -n # Backup and update bit rot copies
+                                            # perform no scrub nor hash check
+)";
+        return 100;
+    }
+
+    //TODO
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     //Basic sanity check
@@ -162,12 +227,13 @@ int main(int argc, char *argv[])
     options_description desc("options");
     desc.add_options()
         ("help,h",   "prints this")
-        ("source,s", value<filesystem::path>(), "source")
-        ("target,t", value<filesystem::path>(), "target")
+        ("source,s", value<path>(), "source")
+        ("target,t", value<path>(), "target")
         ("ignore,i", value<string>(), "ignore")
-        ("output,o", value<filesystem::path>(), "output")
+        ("output,o", value<path>(), "output")
         ("nohash,n", "omit hash computation")
-        ("input",    value<vector<filesystem::path>>(), "input") //Positional catch-all
+        ("singlethread", "don't scan source and target dir in separate threads")
+        ("input",    value<vector<path>>(), "input") //Positional catch-all
     ;
     positional_options_description p;
     p.add("input", -1);
@@ -180,7 +246,7 @@ int main(int argc, char *argv[])
     ofstream outfile;
     if(vm.count("output"))
     {
-        auto outFileName=vm["output"].as<filesystem::path>();
+        auto outFileName=vm["output"].as<path>();
         if(exists(outFileName))
         {
             cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
@@ -198,8 +264,10 @@ int main(int argc, char *argv[])
     //Decide what to do
     const map<string,function<int (variables_map&, ostream&)>> operations=
     {
-        {"ls",   ls},
-        {"diff", diff},
+        {"ls",     lsCmd},
+        {"diff",   diffCmd},
+        {"scrub",  scrubCmd},
+        {"backup", backupCmd},
     };
     auto it=operations.find(argv[0]);
     if(it==operations.end()) help();
