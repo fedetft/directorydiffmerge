@@ -38,13 +38,78 @@ using namespace std::filesystem;
  * \return true if the state was fixed, false otherwise
  */
 static bool tryToFixBackupFile(const path *src, DirectoryTree *srcTree,
-                               const path& dst, const DirectoryDiffLine<3>& diff)
+                               const path& dst, const DirectoryDiffLine<3>& d)
 {
-    //TODO: look into exactly what differs, if the difference
-    //is in the metadata, such as mtime or perms can be fixed
-    //TODO: could try to see if source dir is consistent with
-    //metadata files and copy file from source dir to backup dir
-    //TODO: if it's a directory?
+    assert(d[1]==d[2]);
+    if(!d[0])
+    {
+        string type=d[1].value().typeAsString();
+        cout<<"The "<<type<<" is missing in the backup directory "
+            <<"but the metadata files agree it should be there.\n";
+        if(src==nullptr)
+        {
+            cout<<"If you re-run the scrub giving me also the source directory "
+                <<"I may be able to help by looking for the "<<type<<" there, "
+                <<"but until then, there's nothing I can do.\n";
+            return false;
+        } else {
+            cout<<"Trying to see if I can find the missing "<<type<<" in the "
+                <<"source directory.\n";
+            path srcElementPath=*src / d[1].value().relativePath();
+            path dstElementPath= dst / d[1].value().relativePath();
+            FilesystemElement srcElement;
+            try {
+                srcElement=FilesystemElement(srcElementPath,*src);
+            } catch(exception& e) {
+                cout<<"That failed with error: "<<e.what()<<". There's nothing "
+                    <<"I can do, but I recommend to double check the source "
+                    <<"directory path. If it's wrong, please re-run the command "
+                    <<"with the correct path. If it's correct, please check the "
+                    <<"source directory manually, if the "<<type<<" really isn't "
+                    <<"there maybe it was deleted manually both there and in the "
+                    <<"backup directory.\n";
+                return false;
+            }
+            if(srcElement==d[1].value())
+            {
+                //FIXME: if this is a directory, then it does not make sense
+                //to process subsequent inconsistencies as we invalidated the diff
+                cout<<"The "<<type<<" was found in the source directory and "
+                    <<"matches with the backup metadata.\n"
+                    <<"Copying it back into the backup directory.\n";
+                //BUG: mtime differs, and this also causes the parent directory's
+                //mtime to differ!
+                copy(srcElementPath,dstElementPath);
+                return true;
+            } else {
+                //TODO: look into exactly what differs, if the difference
+                //is in the metadata, such as mtime or perms can be fixed
+                cout<<"Something was found in the source directory with path "
+                    <<srcElementPath<<" however, its properties\n"<<srcElement
+                    <<" d not match the missing "<<type<<". At this point "
+                    <<"there's nothing I can do.\n";
+                return false;
+            }
+        }
+    } else if(!d[1]) {
+        string type=d[0].value().typeAsString();
+        path dstElementPath=dst / d[0].value().relativePath();
+        //FIXME: if this is a directory, then it does not make sense
+        //to process subsequent inconsistencies as we invalidated the diff
+        cout<<"The "<<type<<" "<<dstElementPath<<" is present in the backup "
+            <<"directory but the metadata files agree it should not be there.\n"
+            <<"Removing the "<<type<<".\n";
+        //BUG: this also causes the parent directory's mtime to differ!
+        auto n=remove_all(dst/d[0].value().relativePath());
+        cout<<"Removed "<<n<<" files or directories\n";
+        return true;
+    } else {
+        //TODO: look into exactly what differs, if the difference
+        //is in the metadata, such as mtime or perms can be fixed
+        //TODO: could try to see if source dir is consistent with
+        //metadata files and copy file from source dir to backup dir
+        //TODO: if it's a directory?
+    }
     return false;
 }
 
@@ -86,11 +151,11 @@ static int scrubImpl(const path *src, DirectoryTree *srcTree,
 
     if(diff.empty())
     {
-        cout<<greenb<<"All good"<<reset<<". No differences found.\n";
+        cout<<greenb<<"All good."<<reset<<" No differences found.\n";
         return 0;
     }
-    cout<<yellowb<<"Inconsitencies found"<<reset
-        <<". Processing them one by one.\nNote: in the following diff a is "
+    cout<<yellowb<<"Inconsitencies found."<<reset
+        <<" Processing them one by one.\nNote: in the following diff a is "
         <<"the backup directory, b is metadata file 1 while c is metadata file 2\n";
     bool recovered=true, updateMeta1=false, updateMeta2=false;
     for(auto& d : diff)
@@ -107,16 +172,16 @@ static int scrubImpl(const path *src, DirectoryTree *srcTree,
             updateMeta1=true;
         } else if(d[1]==d[2] && d[0]!=d[1]) {
             cout<<d<<"Metadata files are consistent between themselves "
-                <<"but differ from backup directory content. Trying to fix this\n";
+                <<"but differ from backup directory content. Trying to fix this.\n";
             if(tryToFixBackupFile(src,srcTree,dst,d)==false) recovered=false;
         } else if(d[0]!=d[1] && d[1]!=d[2]) {
-            cout<<d<<"Metadata files are inconsistent both with themselves "
-                <<"and backup directory content. Nothing can be done.\n";
+            cout<<d<<"Metadata files are inconsistent both among themselves "
+                <<"and with backup directory content. Nothing can be done.\n";
             recovered=false;
         } else assert(false); //Invalid diff
         cout<<'\n';
     }
-    cout<<"Inconsistencies processed\n";
+    cout<<"Inconsistencies processed.\n";
 
     if(recovered)
     {

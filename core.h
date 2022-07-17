@@ -80,7 +80,7 @@ public:
      */
     FilesystemElement(const std::filesystem::path& p,
                       const std::filesystem::path& top,
-                      ScanOpt opt);
+                      ScanOpt opt=ScanOpt::ComputeHash);
 
     /**
      * Constructor from string, used when reading from metadata files
@@ -115,6 +115,11 @@ public:
      * \return the type of the FilesystemElement (reguler file, directory, ...)
      */
     std::filesystem::file_type type() const { return ty; }
+
+    /**
+     * \return the file type as string ("file", "directory", ...)
+     */
+    std::string typeAsString() const;
 
     /**
      * \return the access permissions

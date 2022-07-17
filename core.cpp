@@ -219,6 +219,17 @@ void FilesystemElement::writeTo(ostream& os) const
     os<<rp;
 }
 
+string FilesystemElement::typeAsString() const
+{
+    switch(ty)
+    {
+        case file_type::regular:   return "file";
+        case file_type::directory: return "directory";
+        case file_type::symlink:   return "symbolic link";
+        default:                   return "unknown file type";
+    }
+}
+
 bool operator< (const FilesystemElement& a, const FilesystemElement& b)
 {
     // Sort alphabetically (case sensitive) but put directories first
