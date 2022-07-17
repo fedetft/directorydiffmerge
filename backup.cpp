@@ -96,7 +96,7 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
                 //is in the metadata, such as mtime or perms can be fixed
                 cout<<"Something was found in the source directory with path "
                     <<srcElementPath<<" however, its properties\n"<<srcElement
-                    <<" d not match the missing "<<type<<". At this point "
+                    <<" do not match the missing "<<type<<". At this point "
                     <<"there's nothing I can do.\n";
                 return FixupResult::Failed;
             }
@@ -108,7 +108,8 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
             <<"directory but the metadata files agree it should not be there.\n"
             <<"Removing the "<<type<<".\n";
         //BUG: this also causes the parent directory's mtime to differ!
-        auto n=remove_all(dst/d[0].value().relativePath());
+        auto n=remove_all(dstElementPath);
+        assert(n>0);
         cout<<"Removed "<<n<<" files or directories.\n";
         if(d[0].value().type()==file_type::directory)
         {
