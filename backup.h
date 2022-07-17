@@ -58,28 +58,3 @@ int scrub(const std::filesystem::path& src,
           const std::filesystem::path& meta1,
           const std::filesystem::path& meta2,
           bool threads);
-
-/**
- * Implementation code that scrubs only the backup directory
- * \param dst backup directory path, used to perform modifications
- * \param dstTree freshly scanned metadata for dst, assumes no modifications occurred
- * \param meta1 first copy of the metadata path
- * \param meta2 second copy of the metadata path
- */
-int scrubImpl(const std::filesystem::path& dst,
-              DirectoryTree& dstTree,
-              const std::filesystem::path& meta1,
-              const std::filesystem::path& meta2);
-
-/**
- * Implementation code that scrubs both the directory to be backed up and the
- * backup directory
- * \param srcTree freshly scanned metadata for src, assumes no modifications occurred
- * \param dst backup directory path, used to perform modifications
- * \param dstTree freshly scanned metadata for dst, assumes no modifications occurred
- * \param meta1 first copy of the metadata path
- * \param meta2 second copy of the metadata path
- */
-int scrubImpl(DirectoryTree& srcTree, const std::filesystem::path& dst,
-              DirectoryTree& dstTree, const std::filesystem::path& meta1,
-              const std::filesystem::path& meta2);

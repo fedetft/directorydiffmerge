@@ -340,6 +340,14 @@ void DirectoryTree::readFrom(istream& is, const string& metadataFileName)
     add();
 }
 
+void DirectoryTree::writeTo(const path& metadataFile) const
+{
+    ofstream out(metadataFile);
+    if(!out)
+        throw runtime_error(string("could not open for writing: ")+metadataFile.string());
+    writeTo(out);
+}
+
 void DirectoryTree::writeTo(std::ostream& os) const
 {
     this->os=&os;
@@ -407,26 +415,30 @@ void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes) const
 // class DirectoryDiff
 //
 
+ostream& operator<<(ostream& os, const DirectoryDiffLine<2>& d)
+{
+    if(d[0]) os<<"- "<<d[0].value()<<'\n'; else os<<"- /dev/null\n";
+    if(d[1]) os<<"+ "<<d[1].value()<<'\n'; else os<<"+ /dev/null\n";
+    return os;
+}
+
+ostream& operator<<(ostream& os, const DirectoryDiffLine<3>& d)
+{
+    if(d[0]) os<<"a "<<d[0].value()<<'\n'; else os<<"a /dev/null\n";
+    if(d[1]) os<<"b "<<d[1].value()<<'\n'; else os<<"b /dev/null\n";
+    if(d[2]) os<<"c "<<d[2].value()<<'\n'; else os<<"c /dev/null\n";
+    return os;
+}
+
 std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
 {
-    for(auto& d : diff)
-    {
-        if(d[0]) os<<"- "<<d[0].value()<<'\n'; else os<<"- /dev/null\n";
-        if(d[1]) os<<"+ "<<d[1].value()<<'\n'; else os<<"+ /dev/null\n";
-        os<<'\n';
-    }
+    for(auto& d : diff) os<<d<<'\n';
     return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const DirectoryDiff<3>& diff)
 {
-    for(auto& d : diff)
-    {
-        if(d[0]) os<<"a "<<d[0].value()<<'\n'; else os<<"a /dev/null\n";
-        if(d[1]) os<<"b "<<d[1].value()<<'\n'; else os<<"b /dev/null\n";
-        if(d[2]) os<<"c "<<d[2].value()<<'\n'; else os<<"c /dev/null\n";
-        os<<'\n';
-    }
+    for(auto& d : diff) os<<d<<'\n';
     return os;
 }
 

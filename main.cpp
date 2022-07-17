@@ -22,6 +22,7 @@
 #include <boost/program_options.hpp>
 #include "core.h"
 #include "backup.h"
+#include "color.h"
 
 using namespace std;
 using namespace std::filesystem;
@@ -73,7 +74,7 @@ ddm sync -s <d|m> -t <d|m> -o <dir> # ??? TODO
  */
 static void printWarning(const string& message)
 {
-    cerr<<message<<'\n';
+    cerr<<yellowb<<message<<reset<<'\n';
 }
 
 /**
@@ -214,7 +215,7 @@ ddm backup -s <dir> -t <dir> <met> <met> -n # Backup and update bit rot copies
     return 0;
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char *argv[]) try
 {
     //Basic sanity check
     if(argc<2) help();
@@ -249,13 +250,14 @@ int main(int argc, char *argv[])
         auto outFileName=vm["output"].as<path>();
         if(exists(outFileName))
         {
-            cerr<<"Output file "<<outFileName<<" already exists. Aborting.\n";
+            cerr<<redb<<"Output file "<<outFileName
+                <<" already exists. Aborting."<<reset<<'\n';
             return 10;
         }
         outfile.open(outFileName);
         if(!outfile)
         {
-            cerr<<"Error opening "<<outFileName<<". Aborting.\n";
+            cerr<<redb<<"Error opening "<<outFileName<<". Aborting."<<reset<<'\n';
             return 10;
         }
         out=&outfile;
@@ -272,4 +274,7 @@ int main(int argc, char *argv[])
     auto it=operations.find(argv[0]);
     if(it==operations.end()) help();
     return it->second(vm,*out);
+} catch(exception& e) {
+    cerr<<"\n"<<redb<<"Error: "<<e.what()<<reset<<"\n";
+    return 10;
 }

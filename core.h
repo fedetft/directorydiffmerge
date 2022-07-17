@@ -349,6 +349,12 @@ public:
     void readFrom(std::istream& is, const std::string& metadataFileName="");
 
     /**
+     * Write to metadata files
+     * \param metadataFile path of the metadata file
+     */
+    void writeTo(const std::filesystem::path& metadataFile) const;
+
+    /**
      * Write the object to an ostream based on the metadata file format
      * \param os ostream where to write
      */
@@ -404,12 +410,30 @@ inline std::ostream& operator<<(std::ostream& os, const DirectoryTree& dt)
 }
 
 /**
- * Type returned by diff operations
- * First element of the pair is a FilesystemElement of the A tree
- * Second element of the pair is a FilesystemElement of the B tree
+ * A single difference between N directories
  */
 template<unsigned N>
-using DirectoryDiff=std::list<std::array<std::optional<FilesystemElement>,N>>;
+using DirectoryDiffLine=std::array<std::optional<FilesystemElement>,N>;
+
+/**
+ * Type returned by diff operations
+ */
+template<unsigned N>
+using DirectoryDiff=std::list<DirectoryDiffLine<N>>;
+
+/**
+ * Print a single difference to an ostream based on the diff file format
+ * \param os ostream where to write
+ * \param diff diff to write
+ */
+std::ostream& operator<<(std::ostream& os, const DirectoryDiffLine<2>& d);
+
+/**
+ * Print a single difference to an ostream based on the diff file format
+ * \param os ostream where to write
+ * \param diff diff to write
+ */
+std::ostream& operator<<(std::ostream& os, const DirectoryDiffLine<3>& d);
 
 /**
  * Print a diff to an ostream based on the diff file format
