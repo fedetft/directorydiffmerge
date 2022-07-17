@@ -86,7 +86,7 @@ static int lsCmd(variables_map& vm, ostream& out)
     if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
 
     if(vm.count("help")   || vm.count("source") || vm.count("target")
-    || vm.count("ignore") || inputs.size()>1)
+    || vm.count("ignore") || vm.count("fixup")  || inputs.size()>1)
     {
         cerr<<R"(ddm ls
 Usage:
@@ -113,8 +113,8 @@ static int diffCmd(variables_map& vm, ostream& out)
     vector<path> inputs;
     if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
 
-    if(vm.count("help") || vm.count("source") || vm.count("target")
-    || inputs.size()<2 || inputs.size()>3)
+    if(vm.count("help")  || vm.count("source") || vm.count("target")
+    || vm.count("fixup") || inputs.size()<2 || inputs.size()>3)
     {
         cerr<<R"(ddm diff
 Usage:
@@ -184,9 +184,9 @@ ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
 
     if(vm.count("source") && vm.count("target"))
         return scrub(vm["source"].as<path>(),vm["target"].as<path>(),
-                     inputs[0],inputs[1],!vm.count("singlethread"));
+                     inputs.at(0),inputs.at(1),vm.count("fixup"));
     else
-        return scrub(inputs[0],inputs[1],inputs[2]);
+        return scrub(inputs.at(0),inputs.at(1),inputs.at(2),vm.count("fixup"));
 }
 
 /**
@@ -233,6 +233,7 @@ int main(int argc, char *argv[]) try
         ("ignore,i", value<string>(), "ignore")
         ("output,o", value<path>(), "output")
         ("nohash,n", "omit hash computation")
+        ("fixup",    "attempt to fixup backup directory if scrub finds issues")
         ("singlethread", "don't scan source and target dir in separate threads")
         ("input",    value<vector<path>>(), "input") //Positional catch-all
     ;
