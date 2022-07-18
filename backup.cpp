@@ -72,25 +72,22 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
                     <<"with the correct path. If it's correct, please check the "
                     <<"source directory manually, if the "<<type<<" really isn't "
                     <<"there maybe it was deleted manually both there and in the "
-                    <<"backup directory.\n";
+                    <<"backup directory. If this is the only error you could "
+                    <<"delete and recreate the metadata files.\n";
                 return FixupResult::Failed;
             }
             if(srcElement==d[1].value())
             {
+                file_type ty=d[1].value().type();
                 cout<<"The "<<type<<" was found in the source directory and "
                     <<"matches with the backup metadata.\n"
                     <<"Copying it back into the backup directory.\n";
                 //BUG: mtime differs, and this also causes the parent directory's
                 //mtime to differ!
                 copy(srcElementPath,dstElementPath);
-                if(d[1].value().type()==file_type::directory)
-                {
-                    //TODO: update dstTree to reflect change
-                    return FixupResult::SuccessDiffInvalidated;
-                } else {
-                    //TODO: update dstTree to reflect change
-                    return FixupResult::Success;
-                }
+                //TODO: update dstTree to reflect change
+                return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
+                                                : FixupResult::Success;
             } else {
                 //TODO: look into exactly what differs, if the difference
                 //is in the metadata, such as mtime or perms can be fixed
@@ -102,23 +99,16 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
             }
         }
     } else if(!d[1]) {
+        file_type ty=d[0].value().type();
         string type=d[0].value().typeAsString();
-        path dstElementPath=dst / d[0].value().relativePath();
-        cout<<"The "<<type<<" "<<dstElementPath<<" is present in the backup "
+        path removePath=d[0].value().relativePath();
+        cout<<"The "<<type<<" "<<removePath<<" is present in the backup "
             <<"directory but the metadata files agree it should not be there.\n"
             <<"Removing the "<<type<<".\n";
-        //BUG: this also causes the parent directory's mtime to differ!
-        auto n=remove_all(dstElementPath);
-        assert(n>0);
-        cout<<"Removed "<<n<<" files or directories.\n";
-        if(d[0].value().type()==file_type::directory)
-        {
-            //TODO: update dstTree to reflect change
-            return FixupResult::SuccessDiffInvalidated;
-        } else {
-            //TODO: update dstTree to reflect change
-            return FixupResult::Success;
-        }
+        int cnt=dstTree.removeFromTreeAndFilesystem(removePath);
+        cout<<"Removed "<<cnt<<" files or directories.\n";
+        return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
+                                        : FixupResult::Success;
     } else {
         //TODO: look into exactly what differs, if the difference
         //is in the metadata, such as mtime or perms can be fixed
