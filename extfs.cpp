@@ -16,6 +16,7 @@
  ***************************************************************************/
 
 #include "extfs.h"
+#include <fcntl.h>
 #include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
@@ -95,3 +96,19 @@ const file_type ext_file_status::typeLut[16]=
     file_type::unknown,   //016
     file_type::unknown    //017
 };
+
+//
+//
+//
+
+void ext_last_write_time(const path& p, time_t mtime)
+{
+    string s=p.string();
+    timespec t[2];
+    t[0].tv_sec=0;
+    t[0].tv_nsec=UTIME_OMIT;
+    t[1].tv_sec=mtime;
+    t[1].tv_nsec=0;
+    if(utimensat(AT_FDCWD,s.c_str(),t,AT_SYMLINK_NOFOLLOW)!=0)
+        throw runtime_error(string("ext_last_write_time failed with path ")+s);
+}

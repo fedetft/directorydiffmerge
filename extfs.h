@@ -151,3 +151,9 @@ inline ext_file_status ext_symlink_status(const std::filesystem::path& p)
         throw std::runtime_error("ext_symlink_status");
     return result;
 }
+
+/**
+ * Extended version of std::filesystem::last_write_time that does not follow
+ * symlinks
+ */
+void ext_last_write_time(const std::filesystem::path& p, time_t mtime);
