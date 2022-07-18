@@ -203,7 +203,8 @@ void FilesystemElement::writeTo(ostream& os) const
     // take the time zone information that it prints? Not sure.
     // So I decided to print +0000 manually as a string to be extra sure
     struct tm t;
-    assert(gmtime_r(&mt,&t)==&t);
+    auto ret=gmtime_r(&mt,&t);
+    assert(ret==&t);
     os<<put_time(&t,"%F %T +0000")<<' ';
     switch(ty)
     {
@@ -274,6 +275,13 @@ list<DirectoryNode>& DirectoryNode::setDirectoryContent(list<DirectoryNode>&& co
     return this->content;
 }
 
+void DirectoryNode::removeFromDirectoryContent(const DirectoryNode& toRemove)
+{
+    content.remove_if([&](const DirectoryNode& e){
+        return e.elem==toRemove.elem;
+    });
+}
+
 //
 // class DirectoryTree
 //
@@ -283,10 +291,9 @@ void DirectoryTree::scanDirectory(const path& topPath, ScanOpt opt)
     clear();
     this->opt=opt;
     this->topPath=absolute(topPath);
-    if(!is_directory(this->topPath))
+    if(!is_directory(this->topPath.value()))
         throw logic_error(topPath.string()+" is not a directory");
-    recursiveBuildFromPath(this->topPath);
-    this->topPath.clear();
+    recursiveBuildFromPath(""); //Top level directory has empty relative path
 }
 
 void DirectoryTree::readFrom(const path& metadataFile)
@@ -359,7 +366,7 @@ void DirectoryTree::writeTo(const path& metadataFile) const
     writeTo(out);
 }
 
-void DirectoryTree::writeTo(std::ostream& os) const
+void DirectoryTree::writeTo(ostream& os) const
 {
     this->os=&os;
     printBreak=false;
@@ -369,16 +376,69 @@ void DirectoryTree::writeTo(std::ostream& os) const
 
 void DirectoryTree::clear()
 {
-    topPath.clear();
+    topPath.reset();
     topContent.clear();
     index.clear();
 }
 
-void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
+void DirectoryTree::removeFromTree(const path& relativePath)
+{
+    string rp=relativePath.string();
+    auto it=index.find(rp);
+    if(it==index.end())
+        throw runtime_error(string("DirectoryTree::removeFromTree: path not found ")+rp);
+
+    //If directory remove from index all childs
+    if(it->second->getElement().isDirectory())
+        recursiveRemoveFromIndex(*it->second);
+
+    //Remove the DirectoryNode itself (and all its childs if directory)
+    path parent=relativePath.parent_path();
+    if(parent.empty()==false)
+    {
+        auto it2=index.find(parent.string());
+        assert(it2!=index.end());
+        it2->second->removeFromDirectoryContent(*it->second);
+    } else {
+        topContent.remove_if([&](const DirectoryNode& e){
+            return e.getElement()==it->second->getElement();
+        });
+    }
+    //Remove the path from the index (done last as invalidates it)
+    index.erase(relativePath);
+}
+
+int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
+{
+    if(topPath.has_value()==false)
+        throw runtime_error("DirectoryTree::removeFromTreeAndFilesystem");
+
+    //Remove from tree first, this checks if path exists too
+    removeFromTree(relativePath);
+
+    //Remove from filesystem
+    int result=remove_all(topPath.value() / relativePath);
+
+    //If file is in a subdirectory, fixup mtime of parent directory
+    //TODO: tested without this and remove_all did not seem to update the parent
+    //directory mtime, is this really needed?
+    path parent=relativePath.parent_path();
+    if(parent.empty()==false)
+    {
+        auto it2=index.find(parent.string());
+        assert(it2!=index.end());
+        ext_last_write_time(topPath.value() / parent,
+                            it2->second->getElement().mtime());
+    }
+
+    return result;
+}
+
+void DirectoryTree::recursiveBuildFromPath(const path& p)
 {
     list<DirectoryNode> nodes, *nodesPtr;
-    for(auto& it : directory_iterator(topPath / p))
-        nodes.push_back(DirectoryNode(FilesystemElement(it.path(),topPath,opt)));
+    for(auto& it : directory_iterator(topPath.value() / p))
+        nodes.push_back(DirectoryNode(FilesystemElement(it.path(),topPath.value(),opt)));
     nodes.sort();
     if(topContent.empty())
     {
@@ -410,15 +470,25 @@ void DirectoryTree::recursiveBuildFromPath(const std::filesystem::path& p)
     }
 }
 
-void DirectoryTree::recursiveWrite(const std::list<DirectoryNode>& nodes) const
+void DirectoryTree::recursiveWrite(const list<DirectoryNode>& nodes) const
 {
     if(printBreak) *os<<'\n';
-    for(auto&n : nodes) *os<<n.getElement()<<'\n';
+    for(auto& n : nodes) *os<<n.getElement()<<'\n';
     printBreak=nodes.empty()==false;
-    for(auto&n : nodes)
+    for(auto& n : nodes)
     {
         if(n.getElement().isDirectory()==false) break;
         recursiveWrite(n.getDirectoryContent());
+    }
+}
+
+void DirectoryTree::recursiveRemoveFromIndex(const DirectoryNode& node)
+{
+    for(auto& n : node.getDirectoryContent())
+    {
+        if(n.getElement().isDirectory()) recursiveRemoveFromIndex(n);
+        int cnt=index.erase(n.getElement().relativePath().string());
+        assert(cnt==1);
     }
 }
 
@@ -441,13 +511,13 @@ ostream& operator<<(ostream& os, const DirectoryDiffLine<3>& d)
     return os;
 }
 
-std::ostream& operator<<(std::ostream& os, const DirectoryDiff<2>& diff)
+ostream& operator<<(ostream& os, const DirectoryDiff<2>& diff)
 {
     for(auto& d : diff) os<<d<<'\n';
     return os;
 }
 
-std::ostream& operator<<(std::ostream& os, const DirectoryDiff<3>& diff)
+ostream& operator<<(ostream& os, const DirectoryDiff<3>& diff)
 {
     for(auto& d : diff) os<<d<<'\n';
     return os;

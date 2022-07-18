@@ -265,6 +265,12 @@ public:
      */
     const std::list<DirectoryNode>& getDirectoryContent() const { return content; }
 
+    /**
+     * Remove an element from the directory content
+     * \param toRemove DirectoryNode to remove
+     */
+    void removeFromDirectoryContent(const DirectoryNode& toRemove);
+
 private:
     FilesystemElement elem;           ///< The filesystem element
     std::list<DirectoryNode> content; ///< If element is a directory, its content
@@ -389,16 +395,40 @@ public:
         return index;
     }
 
+    /**
+     * Remove the specified path from the tree. If the path refers to a directory
+     * recursively remove all its content
+     * \param relativePath path to remove
+     * \throws runtime_error if path not found
+     */
+    void removeFromTree(const std::filesystem::path& relativePath);
+
+    /**
+     * Remove the specified path from the tree and the filesystem. Only works if
+     * the tree was constructed by scanning a directory, not if it was
+     * constructed from a metadata file.
+     * WARNING: this actually deletes files from your filesystem!
+     * If the path refers to a directory recursively remove all its content
+     * \param relativePath path to remove
+     * \return number of files/directories removed from filesystem
+     * \throws runtime_error if path not found or if the tree was not constructed
+     * by scanning a directory
+     */
+    int removeFromTreeAndFilesystem(const std::filesystem::path& relativePath);
+
 private:
     void recursiveBuildFromPath(const std::filesystem::path& p);
 
     void recursiveWrite(const std::list<DirectoryNode>& nodes) const;
 
+    /// Removes the subtree starting from node from index, but not node itself
+    void recursiveRemoveFromIndex(const DirectoryNode& node);
+
     std::list<DirectoryNode> topContent;
     std::unordered_map<std::string,DirectoryNode*> index;
     std::function<void (const std::string&)> warningCallback;
+    std::optional<std::filesystem::path> topPath; // Only if built from directory
     ScanOpt opt;                      // Only used by recursiveBuildFromPath
-    std::filesystem::path topPath;    // Only used by recursiveBuildFromPath
     mutable std::ostream *os=nullptr; // Only used by recursiveWrite
     mutable bool printBreak;          // Only used by recursiveWrite
 };
