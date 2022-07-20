@@ -34,14 +34,13 @@ enum class FixupResult
  * This function only sees a single difference, and is called to handle the
  * more difficult case when the metadata files agree but the content of the
  * backup directory differs from them.
- * \param src source directory path. NOTE: may be nullptr if source dir not
- * given by the user
- * \param dst backup directory path, used to perform modifications
+ * \param srcTree freshly scanned metadata for src
+ * NOTE: may be nullptr if source dir not given by the user
  * \param dstTree freshly scanned metadata for dst
  * \param diff diff line representing the inconsistent state to try fixing
  * \return fixup result
  */
-static FixupResult tryToFixBackupFile(const path *src, const path& dst,
+static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                                       DirectoryTree& dstTree,
                                       const DirectoryDiffLine<3>& d)
 {
@@ -51,7 +50,7 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
         string type=d[1].value().typeAsString();
         cout<<"The "<<type<<" is missing in the backup directory "
             <<"but the metadata files agree it should be there.\n";
-        if(src==nullptr)
+        if(srcTree==nullptr)
         {
             cout<<"If you re-run the scrub giving me also the source directory "
                 <<"I may be able to help by looking for the "<<type<<" there, "
@@ -60,41 +59,36 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
         } else {
             cout<<"Trying to see if I can find the missing "<<type<<" in the "
                 <<"source directory.\n";
-            path srcElementPath=*src / d[1].value().relativePath();
-            path dstElementPath= dst / d[1].value().relativePath();
-            FilesystemElement srcElement;
-            try {
-                srcElement=FilesystemElement(srcElementPath,*src);
-            } catch(exception& e) {
-                cout<<"That failed with error: "<<e.what()<<". There's nothing "
-                    <<"I can do, but I recommend to double check the source "
-                    <<"directory path. If it's wrong, please re-run the command "
-                    <<"with the correct path. If it's correct, please check the "
-                    <<"source directory manually, if the "<<type<<" really isn't "
-                    <<"there maybe it was deleted manually both there and in the "
+            auto item=srcTree->search(d[1].value().relativePath());
+            if(item.has_value()==false)
+            {
+                cout<<"The "<<type<<" was not found. There's nothing I can do, "
+                    <<"but I recommend to double check the source directory "
+                    <<"path. If it's wrong, please re-run the command with the "
+                    <<"correct path. If it's correct, please check the source "
+                    <<"directory manually, if the "<<type<<" really isn't there "
+                    <<"maybe it was deleted manually both there and in the "
                     <<"backup directory. If this is the only error you could "
                     <<"delete and recreate the metadata files.\n";
                 return FixupResult::Failed;
             }
-            if(srcElement==d[1].value())
+            if(item.value()==d[1].value())
             {
-                file_type ty=d[1].value().type();
                 cout<<"The "<<type<<" was found in the source directory and "
                     <<"matches with the backup metadata.\n"
                     <<"Copying it back into the backup directory.\n";
-                //BUG: mtime differs, and this also causes the parent directory's
-                //mtime to differ!
-                copy(srcElementPath,dstElementPath);
-                //TODO: update dstTree to reflect change
+                dstTree.copyFromTreeAndFilesystem(*srcTree,
+                    d[1].value().relativePath(),
+                    d[1].value().relativePath().parent_path());
+                file_type ty=d[1].value().type();
                 return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
                                                 : FixupResult::Success;
             } else {
                 //TODO: look into exactly what differs, if the difference
                 //is in the metadata, such as mtime or perms can be fixed
-                cout<<"Something was found in the source directory with path "
-                    <<srcElementPath<<" however, its properties\n"<<srcElement
-                    <<" do not match the missing "<<type<<". At this point "
-                    <<"there's nothing I can do.\n";
+                cout<<"Something was found in the source directory however, its "
+                    <<"properties\n"<<item.value()<<" do not match the missing "
+                    <<type<<". At this point there's nothing I can do.\n";
                 return FixupResult::Failed;
             }
         }
@@ -121,9 +115,8 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
 
 /**
  * Implementation code that scrubs only the backup directory
- * \param src source directory path. NOTE: may be nullptr if source dir not
- * given by the user
- * \param dst backup directory path, used to perform modifications
+ * \param srcTree freshly scanned metadata for src
+ * NOTE: may be nullptr if source dir not given by the user
  * \param dstTree freshly scanned metadata for dst
  * \param meta1 first copy of the metadata path
  * \param meta2 second copy of the metadata path
@@ -132,7 +125,7 @@ static FixupResult tryToFixBackupFile(const path *src, const path& dst,
  *         1 if recoverable errors found and fixed
  *         2 if unrecoverable errors found
  */
-static int scrubImpl(const path *src, const path& dst, DirectoryTree& dstTree,
+static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
                      const path& meta1, const path& meta2, bool fixup)
 {
     cout<<"Loading metatata files... "; cout.flush();
@@ -191,7 +184,7 @@ static int scrubImpl(const path *src, const path& dst, DirectoryTree& dstTree,
                 if(fixup)
                 {
                     cout<<"Trying to fix this.\n";
-                    auto result=tryToFixBackupFile(src,dst,dstTree,d);
+                    auto result=tryToFixBackupFile(srcTree,dstTree,d);
                     if(result==FixupResult::Failed) unrecoverable=true;
                     else if(result==FixupResult::SuccessDiffInvalidated)
                     {
@@ -285,7 +278,7 @@ void scanSourceTargetDir(const path& src, const path& dst, bool threads,
     }
 }
 
-int scrub(const path& dst, const path& meta1, const path& meta2,bool fixup)
+int scrub(const path& dst, const path& meta1, const path& meta2, bool fixup)
 {
     cout<<"Scrubbing backup directory "<<dst<<"\n"
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
@@ -293,18 +286,18 @@ int scrub(const path& dst, const path& meta1, const path& meta2,bool fixup)
     DirectoryTree dstTree;
     dstTree.scanDirectory(dst);
     cout<<"Done.\n";
-    return scrubImpl(nullptr,dst,dstTree,meta1,meta2,fixup);
+    return scrubImpl(nullptr,dstTree,meta1,meta2,fixup);
 }
 
 int scrub(const path& src, const path& dst, const path& meta1, const path& meta2,
-          bool fixup)
+          bool fixup, bool threads)
 {
     cout<<"Scrubbing backup directory "<<dst<<"\n"
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
         <<"and with source directory "<<src<<"\n"
         <<"Scanning backup directory... "; cout.flush();
-    DirectoryTree dstTree;
-    dstTree.scanDirectory(dst);
+    DirectoryTree srcTree, dstTree;
+    scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
     cout<<"Done.\n";
-    return scrubImpl(&src,dst,dstTree,meta1,meta2,fixup);
+    return scrubImpl(&srcTree,dstTree,meta1,meta2,fixup);
 }

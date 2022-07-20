@@ -184,7 +184,8 @@ ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
 
     if(vm.count("source") && vm.count("target"))
         return scrub(vm["source"].as<path>(),vm["target"].as<path>(),
-                     inputs.at(0),inputs.at(1),vm.count("fixup"));
+                     inputs.at(0),inputs.at(1),vm.count("fixup"),
+                     !vm.count("singlethread"));
     else
         return scrub(inputs.at(0),inputs.at(1),inputs.at(2),vm.count("fixup"));
 }

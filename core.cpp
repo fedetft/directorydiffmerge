@@ -381,6 +381,25 @@ void DirectoryTree::clear()
     index.clear();
 }
 
+optional<FilesystemElement> DirectoryTree::search(const path& p) const
+{
+    auto it=index.find(p);
+    if(it==index.end()) return nullopt;
+    return it->second->getElement();
+}
+
+void DirectoryTree::copyFromTree(const DirectoryTree& srcTree,
+    const path& relativeSrcPath, const path& relativeDstPath)
+{
+    //TODO
+}
+
+void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
+    const path& relativeSrcPath, const path& relativeDstPath)
+{
+    //TODO
+}
+
 void DirectoryTree::removeFromTree(const path& relativePath)
 {
     string rp=relativePath.string();

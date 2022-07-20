@@ -396,23 +396,61 @@ public:
     }
 
     /**
-     * Remove the specified path from the tree. If the path refers to a directory
-     * recursively remove all its content
+     * \param p relative path to search
+     * \return the corresponding FilesystemElemet if found
+     */
+    std::optional<FilesystemElement> search(const std::filesystem::path& p) const;
+
+    /**
+     * Copy part of another directoryTree into this tree.
+     * \param srcTree source tree. Nothe that you can pass this to duplicate
+     * a part of this tree somewhere else in the same tree
+     * \param relativeSrcPath path relative to srcTree pointing to the idem to
+     * copy, could be a file, symlink or directory
+     * \param relativeDstPath path relative to this tree pointing to a directory
+     * where the item has to be copied
+     * \throws runtime_error if paths not found or dst path not a directory
+     */
+    void copyFromTree(const DirectoryTree& srcTree,
+                      const std::filesystem::path& relativeSrcPath,
+                      const std::filesystem::path& relativeDstPath);
+
+    /**
+     * Copy part of another directoryTree into this tree and the filesystem.
+     * Only works if the both the source tree and this tree were constructed by
+     * scanning a directory, not if they were constructed from a metadata file.
+     * WARNING: this actually copies files from your filesystem!
+     * \param srcTree source tree. Nothe that you can pass this to duplicate
+     * a part of this tree somewhere else in the same tree
+     * \param relativeSrcPath path relative to srcTree pointing to the idem to
+     * copy, could be a file, symlink or directory
+     * \param relativeDstPath path relative to this tree pointing to a directory
+     * where the item has to be copied
+     * \throws runtime_error if paths not found or dst path not a directory
+     */
+    void copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
+                                   const std::filesystem::path& relativeSrcPath,
+                                   const std::filesystem::path& relativeDstPath);
+
+    /**
+     * Remove the specified path from this tree.
+     * If the path refers to a directory recursively remove all its content.
      * \param relativePath path to remove
      * \throws runtime_error if path not found
      */
     void removeFromTree(const std::filesystem::path& relativePath);
 
     /**
-     * Remove the specified path from the tree and the filesystem. Only works if
-     * the tree was constructed by scanning a directory, not if it was
-     * constructed from a metadata file.
+     * Remove the specified path from this tree and the filesystem.
+     * Only works if the tree was constructed by scanning a directory, not if
+     * it was constructed from a metadata file.
      * WARNING: this actually deletes files from your filesystem!
      * If the path refers to a directory recursively remove all its content
-     * \param relativePath path to remove
+     * \param relativePath path to remove. Must be relative to the topPath
+     * this tree was constructed from
      * \return number of files/directories removed from filesystem
-     * \throws runtime_error if path not found or if the tree was not constructed
-     * by scanning a directory
+     * \throws runtime_error if path not found or if the tree was not
+     * constructed by scanning a directory
      */
     int removeFromTreeAndFilesystem(const std::filesystem::path& relativePath);
 
