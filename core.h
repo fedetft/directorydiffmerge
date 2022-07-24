@@ -96,6 +96,16 @@ public:
     }
 
     /**
+     * Construct a FilesystemElement from another FilesystemElement, but
+     * changing the path. Used when copying DirectoryNodes
+     * \param other FilesysteElement from where all properties except for the
+     * relative path will be copied
+     * \param relativePath new realtive path
+     */
+    FilesystemElement(const FilesystemElement& other,
+                      const std::filesystem::path& relativePath);
+
+    /**
      * Read from metadata files
      * \param metadataLine line of the metadata file to construct the object from
      * \param metadataFileName name of metadata file, used for error reporting

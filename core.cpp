@@ -95,6 +95,13 @@ FilesystemElement::FilesystemElement(const path& p, const path& top, ScanOpt opt
     }
 }
 
+FilesystemElement::FilesystemElement(const FilesystemElement& other,
+                                     const path& relativePath)
+{
+    *this=other;
+    this->rp=relativePath;
+}
+
 void FilesystemElement::readFrom(const string& metadataLine,
                                  const string& metadataFileName, int lineNo)
 {
@@ -287,8 +294,10 @@ void DirectoryNode::removeFromDirectoryContent(const DirectoryNode& toRemove)
 void DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
 {
     assert(dst.elem.isDirectory());
+    path name=src.elem.relativePath().filename();
+    assert(name.empty()==false);
     DirectoryNode newNode;
-    newNode.elem=src.elem; //FIXME BUG need to adjust path!!!!!!!!!!!!!!!!!
+    newNode.elem=FilesystemElement(src.elem,dst.elem.relativePath() / name);
     for(auto& n : src.content) recursiveAdd(newNode,n);
     dst.content.push_back(std::move(newNode));
 }
