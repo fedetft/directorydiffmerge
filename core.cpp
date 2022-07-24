@@ -277,9 +277,20 @@ list<DirectoryNode>& DirectoryNode::setDirectoryContent(list<DirectoryNode>&& co
 
 void DirectoryNode::removeFromDirectoryContent(const DirectoryNode& toRemove)
 {
+    //NOTE: removing the node could invalidate the toRemove reference, so copy
+    FilesystemElement removeElem=toRemove.elem;
     content.remove_if([&](const DirectoryNode& e){
-        return e.elem==toRemove.elem;
+        return e.elem==removeElem;
     });
+}
+
+void DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
+{
+    assert(dst.elem.isDirectory());
+    DirectoryNode newNode;
+    newNode.elem=src.elem; //FIXME BUG need to adjust path!!!!!!!!!!!!!!!!!
+    for(auto& n : src.content) recursiveAdd(newNode,n);
+    dst.content.push_back(std::move(newNode));
 }
 
 //
@@ -388,16 +399,33 @@ optional<FilesystemElement> DirectoryTree::search(const path& p) const
     return it->second->getElement();
 }
 
+DirectoryNode *DirectoryTree::searchNode(const path& p) const
+{
+    auto it=index.find(p);
+    if(it==index.end()) return nullptr;
+    return it->second;
+}
+
 void DirectoryTree::copyFromTree(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
+    const DirectoryNode *src;
+    DirectoryNode *dst;
+    getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
+    dst->addToDirectoryContent(*src);
     //TODO
+//     recursiveAddToIndex();
 }
 
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
+    const DirectoryNode *src;
+    DirectoryNode *dst;
+    getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
+    dst->addToDirectoryContent(*src);
     //TODO
+//     recursiveAddToIndex();
 }
 
 void DirectoryTree::removeFromTree(const path& relativePath)
@@ -419,8 +447,10 @@ void DirectoryTree::removeFromTree(const path& relativePath)
         assert(it2!=index.end());
         it2->second->removeFromDirectoryContent(*it->second);
     } else {
+        //NOTE: removing the node could invalidate the it->second reference, so copy
+        FilesystemElement removeElem=it->second->getElement();
         topContent.remove_if([&](const DirectoryNode& e){
-            return e.getElement()==it->second->getElement();
+            return e.getElement()==removeElem;
         });
     }
     //Remove the path from the index (done last as invalidates it)
@@ -509,6 +539,23 @@ void DirectoryTree::recursiveRemoveFromIndex(const DirectoryNode& node)
         int cnt=index.erase(n.getElement().relativePath().string());
         assert(cnt==1);
     }
+}
+
+void DirectoryTree::getNodes(const DirectoryNode *src, DirectoryNode *dst,
+    const DirectoryTree& srcTree, const path& relativeSrcPath,
+    const path& relativeDstPath)
+{
+    src=srcTree.searchNode(relativeSrcPath);
+    if(src==nullptr)
+        throw runtime_error(string("DirectoryTree::copy: can't find src: ")
+            +relativeSrcPath.string());
+    dst=this->searchNode(relativeDstPath);
+    if(dst==nullptr)
+        throw runtime_error(string("DirectoryTree::copy: can't find dst: ")
+            +relativeDstPath.string());
+    if(dst->getElement().isDirectory()==false)
+        throw runtime_error(string("DirectoryTree::copy: dst not a directory: ")
+            +relativeDstPath.string());
 }
 
 //

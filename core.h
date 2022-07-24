@@ -238,7 +238,8 @@ public:
 
     // Heavy object not ment to be copyable, only move assignable.
     // This declaration implicitly deletes copy constructor and copy assignment
-    // in a way that does not upset std::list
+    // in a way that does not upset std::list. Explicit copy is possible with
+    // addToDirectoryContent(), used for copying part of a tree into another
     DirectoryNode(DirectoryNode&&)=default;
 
     /**
@@ -266,12 +267,26 @@ public:
     const std::list<DirectoryNode>& getDirectoryContent() const { return content; }
 
     /**
-     * Remove an element from the directory content
+     * Remove an element from the directory content. If the element is a
+     * directory also the directory content is recursively removed
      * \param toRemove DirectoryNode to remove
      */
     void removeFromDirectoryContent(const DirectoryNode& toRemove);
 
+    /**
+     * Make a copy of another directory node into the directory content of this
+     * directory. This object must be a directory. If also the element to add
+     * is a directory, recursively add the entire directory content.
+     * \param toAdd DirectoryNode to add
+     */
+    void addToDirectoryContent(const DirectoryNode& toAdd)
+    {
+        recursiveAdd(*this,toAdd);
+    }
+
 private:
+    static void recursiveAdd(DirectoryNode& dst, const DirectoryNode& src);
+
     FilesystemElement elem;           ///< The filesystem element
     std::list<DirectoryNode> content; ///< If element is a directory, its content
 };
@@ -402,6 +417,12 @@ public:
     std::optional<FilesystemElement> search(const std::filesystem::path& p) const;
 
     /**
+     * \param p relative path to search
+     * \return the corresponding DirectoryNode if found, nullptr otherwise
+     */
+    DirectoryNode *searchNode(const std::filesystem::path& p) const;
+
+    /**
      * Copy part of another directoryTree into this tree.
      * \param srcTree source tree. Nothe that you can pass this to duplicate
      * a part of this tree somewhere else in the same tree
@@ -458,6 +479,11 @@ private:
     void recursiveBuildFromPath(const std::filesystem::path& p);
 
     void recursiveWrite(const std::list<DirectoryNode>& nodes) const;
+
+    void getNodes(const DirectoryNode *src, DirectoryNode *dst,
+                  const DirectoryTree& srcTree,
+                  const std::filesystem::path& relativeSrcPath,
+                  const std::filesystem::path& relativeDstPath);
 
     /// Removes the subtree starting from node from index, but not node itself
     void recursiveRemoveFromIndex(const DirectoryNode& node);
