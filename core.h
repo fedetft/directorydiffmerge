@@ -288,14 +288,15 @@ public:
      * directory. This object must be a directory. If also the element to add
      * is a directory, recursively add the entire directory content.
      * \param toAdd DirectoryNode to add
+     * \return a reference to the newly added node
      */
-    void addToDirectoryContent(const DirectoryNode& toAdd)
+    DirectoryNode& addToDirectoryContent(const DirectoryNode& toAdd)
     {
-        recursiveAdd(*this,toAdd);
+        return recursiveAdd(*this,toAdd);
     }
 
 private:
-    static void recursiveAdd(DirectoryNode& dst, const DirectoryNode& src);
+    static DirectoryNode& recursiveAdd(DirectoryNode& dst, const DirectoryNode& src);
 
     FilesystemElement elem;           ///< The filesystem element
     std::list<DirectoryNode> content; ///< If element is a directory, its content
@@ -494,6 +495,9 @@ private:
                   const DirectoryTree& srcTree,
                   const std::filesystem::path& relativeSrcPath,
                   const std::filesystem::path& relativeDstPath);
+
+    /// Add the subtree starting from node including node itself
+    void recursiveAddToIndex(const DirectoryNode& node);
 
     /// Removes the subtree starting from node from index, but not node itself
     void recursiveRemoveFromIndex(const DirectoryNode& node);

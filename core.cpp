@@ -291,15 +291,18 @@ void DirectoryNode::removeFromDirectoryContent(const DirectoryNode& toRemove)
     });
 }
 
-void DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
+DirectoryNode& DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
 {
     assert(dst.elem.isDirectory());
     path name=src.elem.relativePath().filename();
     assert(name.empty()==false);
     DirectoryNode newNode;
+    // Assign to the copied node the source element with fixed path
     newNode.elem=FilesystemElement(src.elem,dst.elem.relativePath() / name);
     for(auto& n : src.content) recursiveAdd(newNode,n);
+    // Move the node in the destination directory and return a reference to it
     dst.content.push_back(std::move(newNode));
+    return dst.content.back();
 }
 
 //
@@ -421,9 +424,9 @@ void DirectoryTree::copyFromTree(const DirectoryTree& srcTree,
     const DirectoryNode *src;
     DirectoryNode *dst;
     getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
-    dst->addToDirectoryContent(*src);
-    //TODO
-//     recursiveAddToIndex();
+    auto& newNode=dst->addToDirectoryContent(*src);
+    recursiveAddToIndex(newNode);
+    //FIXME: adding to topContent
 }
 
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
@@ -432,9 +435,10 @@ void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     const DirectoryNode *src;
     DirectoryNode *dst;
     getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
-    dst->addToDirectoryContent(*src);
+    auto& newNode=dst->addToDirectoryContent(*src);
+    recursiveAddToIndex(newNode);
+    //FIXME: adding to topContent
     //TODO
-//     recursiveAddToIndex();
 }
 
 void DirectoryTree::removeFromTree(const path& relativePath)
@@ -540,16 +544,6 @@ void DirectoryTree::recursiveWrite(const list<DirectoryNode>& nodes) const
     }
 }
 
-void DirectoryTree::recursiveRemoveFromIndex(const DirectoryNode& node)
-{
-    for(auto& n : node.getDirectoryContent())
-    {
-        if(n.getElement().isDirectory()) recursiveRemoveFromIndex(n);
-        int cnt=index.erase(n.getElement().relativePath().string());
-        assert(cnt==1);
-    }
-}
-
 void DirectoryTree::getNodes(const DirectoryNode *src, DirectoryNode *dst,
     const DirectoryTree& srcTree, const path& relativeSrcPath,
     const path& relativeDstPath)
@@ -565,6 +559,32 @@ void DirectoryTree::getNodes(const DirectoryNode *src, DirectoryNode *dst,
     if(dst->getElement().isDirectory()==false)
         throw runtime_error(string("DirectoryTree::copy: dst not a directory: ")
             +relativeDstPath.string());
+}
+
+void DirectoryTree::recursiveAddToIndex(const DirectoryNode& node)
+{
+    //NOTE: we don't modify any DirectoryNode, but we need to put in the
+    //index non-const pointers to the nodes, hence the const_cast
+    auto inserted=index.insert({node.getElement().relativePath().string(),
+         const_cast<DirectoryNode*>(&node)});
+    assert(inserted.second);
+    for(auto& n : node.getDirectoryContent())
+    {
+        if(n.getElement().isDirectory()) recursiveRemoveFromIndex(n);
+        auto inserted=index.insert({n.getElement().relativePath().string(),
+            const_cast<DirectoryNode*>(&n)});
+        assert(inserted.second);
+    }
+}
+
+void DirectoryTree::recursiveRemoveFromIndex(const DirectoryNode& node)
+{
+    for(auto& n : node.getDirectoryContent())
+    {
+        if(n.getElement().isDirectory()) recursiveRemoveFromIndex(n);
+        int cnt=index.erase(n.getElement().relativePath().string());
+        assert(cnt==1);
+    }
 }
 
 //
