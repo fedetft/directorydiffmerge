@@ -131,6 +131,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
     cout<<"Loading metatata files... "; cout.flush();
     DirectoryTree meta1Tree, meta2Tree;
     try {
+        //FIXME handle warning callback
         meta1Tree.readFrom(meta1);
         meta2Tree.readFrom(meta2);
         cout<<"Done.\n";
@@ -284,6 +285,7 @@ int scrub(const path& dst, const path& meta1, const path& meta2, bool fixup)
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
         <<"Scanning backup directory... "; cout.flush();
     DirectoryTree dstTree;
+    //FIXME handle warning callback
     dstTree.scanDirectory(dst);
     cout<<"Done.\n";
     return scrubImpl(nullptr,dstTree,meta1,meta2,fixup);
@@ -297,6 +299,7 @@ int scrub(const path& src, const path& dst, const path& meta1, const path& meta2
         <<"and with source directory "<<src<<"\n"
         <<"Scanning backup directory... "; cout.flush();
     DirectoryTree srcTree, dstTree;
+    //FIXME handle warning callback
     scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
     cout<<"Done.\n";
     return scrubImpl(&srcTree,dstTree,meta1,meta2,fixup);
