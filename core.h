@@ -251,6 +251,7 @@ public:
     // in a way that does not upset std::list. Explicit copy is possible with
     // addToDirectoryContent(), used for copying part of a tree into another
     DirectoryNode(DirectoryNode&&)=default;
+    DirectoryNode& operator=(DirectoryNode&&)=default;
 
     /**
      * Constructor

@@ -432,6 +432,9 @@ void DirectoryTree::copyFromTree(const DirectoryTree& srcTree,
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
+    if(topPath.has_value()==false)
+        throw runtime_error("DirectoryTree::copyFromTreeAndFilesystem");
+
     const DirectoryNode *src;
     DirectoryNode *dst;
     getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
