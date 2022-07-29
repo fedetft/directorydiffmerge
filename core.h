@@ -249,7 +249,8 @@ public:
     // Heavy object not ment to be copyable, only move assignable.
     // This declaration implicitly deletes copy constructor and copy assignment
     // in a way that does not upset std::list. Explicit copy is possible with
-    // addToDirectoryContent(), used for copying part of a tree into another
+    // addToDirectoryContent(), used for copying part of a tree into another but
+    // it correctly fixes the path when copying so the nodes belong to the tree
     DirectoryNode(DirectoryNode&&)=default;
     DirectoryNode& operator=(DirectoryNode&&)=default;
 
@@ -259,6 +260,7 @@ public:
     explicit DirectoryNode(FilesystemElement elem) : elem(elem) {}
 
     /**
+     * This member function is meant to be used when constructing a tree only.
      * If the node is a directory, this member function allows to set its content
      * Note that the directory content is moved, not copied into this object.
      * \param content, a list of other DirectoryNodes to be moved into this object
@@ -273,7 +275,7 @@ public:
 
     /**
      * \return a const reference to the nodes contained in the directory, or an
-     * empty list otherwise
+     * empty list otherwise (empty directory or not a directory)
      */
     const std::list<DirectoryNode>& getDirectoryContent() const { return content; }
 
@@ -286,15 +288,13 @@ public:
 
     /**
      * Make a copy of another directory node into the directory content of this
-     * directory. This object must be a directory. If also the element to add
-     * is a directory, recursively add the entire directory content.
+     * directory. This object must be a directory and must not contain a node
+     * with the same name. If also the element to add is a directory,
+     * recursively add the entire directory content.
      * \param toAdd DirectoryNode to add
      * \return a reference to the newly added node
      */
-    DirectoryNode& addToDirectoryContent(const DirectoryNode& toAdd)
-    {
-        return recursiveAdd(*this,toAdd);
-    }
+    DirectoryNode& addToDirectoryContent(const DirectoryNode& toAdd);
 
 private:
     static DirectoryNode& recursiveAdd(DirectoryNode& dst, const DirectoryNode& src);
@@ -440,13 +440,19 @@ public:
      * a part of this tree somewhere else in the same tree
      * \param relativeSrcPath path relative to srcTree pointing to the idem to
      * copy, could be a file, symlink or directory
+     * NOTE: relativeSrcPath cannot be empty, so it is not possible to add the
+     * entire content of the srcTree with a single call
      * \param relativeDstPath path relative to this tree pointing to a directory
-     * where the item has to be copied
+     * where the item has to be copied. Can be empty, in this case add the
+     * item to the top directory
      * \throws runtime_error if paths not found or dst path not a directory
      */
     void copyFromTree(const DirectoryTree& srcTree,
                       const std::filesystem::path& relativeSrcPath,
-                      const std::filesystem::path& relativeDstPath);
+                      const std::filesystem::path& relativeDstPath)
+    {
+        treeCopy(srcTree,relativeSrcPath,relativeDstPath);
+    }
 
     /**
      * Copy part of another directoryTree into this tree and the filesystem.
@@ -457,8 +463,11 @@ public:
      * a part of this tree somewhere else in the same tree
      * \param relativeSrcPath path relative to srcTree pointing to the idem to
      * copy, could be a file, symlink or directory
+     * NOTE: relativeSrcPath cannot be empty, so it is not possible to add the
+     * entire content of the srcTree with a single call
      * \param relativeDstPath path relative to this tree pointing to a directory
-     * where the item has to be copied
+     * where the item has to be copied. Can be empty, in this case add the
+     * item to the top directory
      * \throws runtime_error if paths not found or dst path not a directory
      */
     void copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
@@ -468,7 +477,10 @@ public:
     /**
      * Remove the specified path from this tree.
      * If the path refers to a directory recursively remove all its content.
-     * \param relativePath path to remove
+     * NOTE: relativePath cannot be empty, so it is not possible to remove
+     * the entire content of the top directory with a single call
+     * \param relativePath path to remove. Must be relative to the topPath
+     * this tree was constructed from
      * \throws runtime_error if path not found
      */
     void removeFromTree(const std::filesystem::path& relativePath);
@@ -479,6 +491,8 @@ public:
      * it was constructed from a metadata file.
      * WARNING: this actually deletes files from your filesystem!
      * If the path refers to a directory recursively remove all its content
+     * NOTE: relativePath cannot be empty, so it is not possible to remove
+     * the entire content of the top directory with a single call
      * \param relativePath path to remove. Must be relative to the topPath
      * this tree was constructed from
      * \return number of files/directories removed from filesystem
@@ -492,10 +506,9 @@ private:
 
     void recursiveWrite(const std::list<DirectoryNode>& nodes) const;
 
-    void getNodes(const DirectoryNode *src, DirectoryNode *dst,
-                  const DirectoryTree& srcTree,
-                  const std::filesystem::path& relativeSrcPath,
-                  const std::filesystem::path& relativeDstPath);
+    DirectoryNode& treeCopy(const DirectoryTree& srcTree,
+                            const std::filesystem::path& relativeSrcPath,
+                            const std::filesystem::path& relativeDstPath);
 
     /// Add the subtree starting from node including node itself
     void recursiveAddToIndex(const DirectoryNode& node);

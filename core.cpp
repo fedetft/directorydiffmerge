@@ -291,18 +291,26 @@ void DirectoryNode::removeFromDirectoryContent(const DirectoryNode& toRemove)
     });
 }
 
+DirectoryNode& DirectoryNode::addToDirectoryContent(const DirectoryNode& toAdd)
+{
+    path newName=this->elem.relativePath() / toAdd.elem.relativePath().filename();
+    for(auto& n : this->content) assert(n.elem.relativePath()!=newName);
+    return recursiveAdd(*this,toAdd);
+}
+
 DirectoryNode& DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
 {
     assert(dst.elem.isDirectory());
     path name=src.elem.relativePath().filename();
     assert(name.empty()==false);
-    DirectoryNode newNode;
     // Assign to the copied node the source element with fixed path
-    newNode.elem=FilesystemElement(src.elem,dst.elem.relativePath() / name);
+    DirectoryNode newNode(FilesystemElement(src.elem,dst.elem.relativePath() / name));
     for(auto& n : src.content) recursiveAdd(newNode,n);
     // Move the node in the destination directory and return a reference to it
     dst.content.push_back(std::move(newNode));
-    return dst.content.back();
+    auto& result=dst.content.back();
+    dst.content.sort();
+    return result;
 }
 
 //
@@ -418,30 +426,14 @@ DirectoryNode *DirectoryTree::searchNode(const path& p) const
     return it->second;
 }
 
-void DirectoryTree::copyFromTree(const DirectoryTree& srcTree,
-    const path& relativeSrcPath, const path& relativeDstPath)
-{
-    const DirectoryNode *src;
-    DirectoryNode *dst;
-    getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
-    auto& newNode=dst->addToDirectoryContent(*src);
-    recursiveAddToIndex(newNode);
-    //FIXME: adding to topContent
-}
-
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
     if(topPath.has_value()==false)
         throw runtime_error("DirectoryTree::copyFromTreeAndFilesystem");
 
-    const DirectoryNode *src;
-    DirectoryNode *dst;
-    getNodes(src,dst,srcTree,relativeSrcPath,relativeDstPath);
-    auto& newNode=dst->addToDirectoryContent(*src);
-    recursiveAddToIndex(newNode);
-    //FIXME: adding to topContent
-    //TODO
+    auto& newNode=treeCopy(srcTree,relativeSrcPath,relativeDstPath);
+    //TODO: actually copy on the filesystem
 }
 
 void DirectoryTree::removeFromTree(const path& relativePath)
@@ -470,7 +462,7 @@ void DirectoryTree::removeFromTree(const path& relativePath)
         });
     }
     //Remove the path from the index (done last as invalidates it)
-    index.erase(relativePath);
+    index.erase(rp);
 }
 
 int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
@@ -490,10 +482,9 @@ int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
     path parent=relativePath.parent_path();
     if(parent.empty()==false)
     {
-        auto it2=index.find(parent.string());
-        assert(it2!=index.end());
-        ext_last_write_time(topPath.value() / parent,
-                            it2->second->getElement().mtime());
+        auto it=index.find(parent.string());
+        assert(it!=index.end());
+        ext_last_write_time(topPath.value() / parent,it->second->getElement().mtime());
     }
 
     return result;
@@ -547,21 +538,41 @@ void DirectoryTree::recursiveWrite(const list<DirectoryNode>& nodes) const
     }
 }
 
-void DirectoryTree::getNodes(const DirectoryNode *src, DirectoryNode *dst,
-    const DirectoryTree& srcTree, const path& relativeSrcPath,
-    const path& relativeDstPath)
+DirectoryNode& DirectoryTree::treeCopy(const DirectoryTree& srcTree,
+    const path& relativeSrcPath, const path& relativeDstPath)
 {
-    src=srcTree.searchNode(relativeSrcPath);
+    const auto *src=srcTree.searchNode(relativeSrcPath);
     if(src==nullptr)
         throw runtime_error(string("DirectoryTree::copy: can't find src: ")
             +relativeSrcPath.string());
-    dst=this->searchNode(relativeDstPath);
-    if(dst==nullptr)
-        throw runtime_error(string("DirectoryTree::copy: can't find dst: ")
-            +relativeDstPath.string());
-    if(dst->getElement().isDirectory()==false)
-        throw runtime_error(string("DirectoryTree::copy: dst not a directory: ")
-            +relativeDstPath.string());
+
+    if(relativeDstPath.empty()==false)
+    {
+        auto *dst=this->searchNode(relativeDstPath);
+        if(dst==nullptr)
+            throw runtime_error(string("DirectoryTree::copy: can't find dst: ")
+                +relativeDstPath.string());
+        if(dst->getElement().isDirectory()==false)
+            throw runtime_error(string("DirectoryTree::copy: dst not a directory: ")
+                +relativeDstPath.string());
+        auto& newNode=dst->addToDirectoryContent(*src);
+        recursiveAddToIndex(newNode);
+        return newNode;
+    } else {
+        auto& e=src->getElement();
+        path name=e.relativePath().filename();
+        assert(name.empty()==false);
+        for(auto& n : topContent) assert(n.getElement().relativePath()!=name);
+        // Assign to the copied node the source element with fixed path
+        DirectoryNode newNode(FilesystemElement(e,name));
+        for(auto& n : src->getDirectoryContent())
+            newNode.addToDirectoryContent(n);
+        topContent.push_back(std::move(newNode));
+        auto& result=topContent.back();
+        topContent.sort();
+        recursiveAddToIndex(result);
+        return result;
+    }
 }
 
 void DirectoryTree::recursiveAddToIndex(const DirectoryNode& node)
@@ -573,7 +584,7 @@ void DirectoryTree::recursiveAddToIndex(const DirectoryNode& node)
     assert(inserted.second);
     for(auto& n : node.getDirectoryContent())
     {
-        if(n.getElement().isDirectory()) recursiveRemoveFromIndex(n);
+        if(n.getElement().isDirectory()) recursiveAddToIndex(n);
         auto inserted=index.insert({n.getElement().relativePath().string(),
             const_cast<DirectoryNode*>(&n)});
         assert(inserted.second);
