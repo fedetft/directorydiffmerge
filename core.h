@@ -432,7 +432,7 @@ public:
      * \param p relative path to search
      * \return the corresponding DirectoryNode if found, nullptr otherwise
      */
-    DirectoryNode *searchNode(const std::filesystem::path& p) const;
+    const DirectoryNode *searchNode(const std::filesystem::path& p) const;
 
     /**
      * Copy part of another directoryTree into this tree.
@@ -502,13 +502,27 @@ public:
     int removeFromTreeAndFilesystem(const std::filesystem::path& relativePath);
 
 private:
+    // This version of searchNode that returns a non-const pointer is private
+    DirectoryNode *searchNode(const std::filesystem::path& p);
+
     void recursiveBuildFromPath(const std::filesystem::path& p);
 
     void recursiveWrite(const std::list<DirectoryNode>& nodes) const;
 
-    DirectoryNode& treeCopy(const DirectoryTree& srcTree,
-                            const std::filesystem::path& relativeSrcPath,
-                            const std::filesystem::path& relativeDstPath);
+    struct CopyResult
+    {
+        CopyResult(const DirectoryNode& src, const DirectoryNode& dst)
+            : src(src), dst(dst) {}
+        const DirectoryNode& src;
+        const DirectoryNode& dst;
+    };
+
+    CopyResult treeCopy(const DirectoryTree& srcTree,
+                        const std::filesystem::path& relativeSrcPath,
+                        const std::filesystem::path& relativeDstPath);
+
+    void recursiveFilesystemCopy(const std::filesystem::path& srcTopPath,
+                                 CopyResult nodes);
 
     /// Add the subtree starting from node including node itself
     void recursiveAddToIndex(const DirectoryNode& node);

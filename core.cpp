@@ -247,7 +247,7 @@ bool operator< (const FilesystemElement& a, const FilesystemElement& b)
 
 bool operator== (const FilesystemElement& a, const FilesystemElement& b)
 {
-    // NOTE: either a or b may have been constructed with file has computation
+    // NOTE: either a or b may have been constructed with file hash computation
     // omitted. So if either has an empty hash, this does not cause them to
     // not be equal, but if both have a hash, they must be the same
     return a.ty==b.ty && a.per==b.per && a.us==b.us && a.gs==b.gs
@@ -263,7 +263,7 @@ bool compare(const FilesystemElement& a, const FilesystemElement& b,
     if(opt.owner   && (a.us!=b.us || a.gs!=b.gs)) return false;
     if(opt.mtime   && a.mt!=b.mt) return false;
     if(opt.size    && a.sz!=b.sz) return false;
-    // NOTE: either a or b may have been constructed with file has computation
+    // NOTE: either a or b may have been constructed with file hash computation
     // omitted. Only compare hashes if both have them
     if(opt.hash    && a.fileHash != b.fileHash
                    && !a.fileHash.empty() && !b.fileHash.empty()) return false;
@@ -419,7 +419,7 @@ optional<FilesystemElement> DirectoryTree::search(const path& p) const
     return it->second->getElement();
 }
 
-DirectoryNode *DirectoryTree::searchNode(const path& p) const
+const DirectoryNode *DirectoryTree::searchNode(const path& p) const
 {
     auto it=index.find(p);
     if(it==index.end()) return nullptr;
@@ -429,11 +429,11 @@ DirectoryNode *DirectoryTree::searchNode(const path& p) const
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
-    if(topPath.has_value()==false)
+    if(topPath.has_value()==false || srcTree.topPath.has_value()==false)
         throw runtime_error("DirectoryTree::copyFromTreeAndFilesystem");
 
-    auto& newNode=treeCopy(srcTree,relativeSrcPath,relativeDstPath);
-    //TODO: actually copy on the filesystem
+    auto result=treeCopy(srcTree,relativeSrcPath,relativeDstPath);
+    recursiveFilesystemCopy(srcTree.topPath.value(),result);
 }
 
 void DirectoryTree::removeFromTree(const path& relativePath)
@@ -490,6 +490,13 @@ int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
     return result;
 }
 
+DirectoryNode *DirectoryTree::searchNode(const path& p)
+{
+    auto it=index.find(p);
+    if(it==index.end()) return nullptr;
+    return it->second;
+}
+
 void DirectoryTree::recursiveBuildFromPath(const path& p)
 {
     list<DirectoryNode> nodes, *nodesPtr;
@@ -538,7 +545,7 @@ void DirectoryTree::recursiveWrite(const list<DirectoryNode>& nodes) const
     }
 }
 
-DirectoryNode& DirectoryTree::treeCopy(const DirectoryTree& srcTree,
+DirectoryTree::CopyResult DirectoryTree::treeCopy(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
     const auto *src=srcTree.searchNode(relativeSrcPath);
@@ -557,7 +564,7 @@ DirectoryNode& DirectoryTree::treeCopy(const DirectoryTree& srcTree,
                 +relativeDstPath.string());
         auto& newNode=dst->addToDirectoryContent(*src);
         recursiveAddToIndex(newNode);
-        return newNode;
+        return CopyResult(*src,newNode);
     } else {
         auto& e=src->getElement();
         path name=e.relativePath().filename();
@@ -571,7 +578,60 @@ DirectoryNode& DirectoryTree::treeCopy(const DirectoryTree& srcTree,
         auto& result=topContent.back();
         topContent.sort();
         recursiveAddToIndex(result);
-        return result;
+        return CopyResult(*src,result);
+    }
+}
+
+void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult nodes)
+{
+    path srcPathAbs=srcTopPath / nodes.src.getElement().relativePath();
+    path dstPathAbs=this->topPath.value() / nodes.dst.getElement().relativePath();
+    path dstParentRel=nodes.dst.getElement().relativePath().parent_path();
+    switch(nodes.src.getElement().type())
+    {
+        case file_type::regular:
+        {
+            cout<<"file src"<<srcPathAbs<<"\n";
+            cout<<"file dst"<<dstPathAbs<<"\n";
+            bool ok=copy_file(srcPathAbs,dstPathAbs);
+            if(ok==false)
+                throw runtime_error(string("Error copying ")
+                    +srcPathAbs.string()+" to "+dstPathAbs.string());
+            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
+            //TODO: permissions? user? group? parent fixup
+            break;
+        }
+        case file_type::symlink:
+        {
+            cout<<"lnk src"<<srcPathAbs<<"\n";
+            cout<<"lnk dst"<<dstPathAbs<<"\n";
+            copy_symlink(srcPathAbs,dstPathAbs);
+            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
+            //TODO: user? group? parent fixup
+            break;
+        }
+        case file_type::directory:
+        {
+            cout<<"dir src"<<srcPathAbs<<"\n";
+            cout<<"dir dst"<<dstPathAbs<<"\n";
+            bool ok=create_directory(dstPathAbs);
+            if(ok==false)
+                throw runtime_error(string("Error creating directory ")
+                    +dstPathAbs.string());
+            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
+            //TODO: permissions? user? group? parent fixup
+            for(auto& contentSrc : nodes.src.getDirectoryContent())
+            {
+                path p=dstParentRel / contentSrc.getElement().relativePath().filename();
+                auto *contentDst=this->searchNode(p);
+                assert(contentDst!=nullptr);
+                recursiveFilesystemCopy(srcTopPath,CopyResult(contentSrc,*contentDst));
+            }
+            break;
+        }
+        default:
+            throw runtime_error(string("DirectoryTree::recursiveFilesystemCopy")
+                +": unknown file type "+srcPathAbs.string());
     }
 }
 
