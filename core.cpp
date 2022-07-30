@@ -309,7 +309,7 @@ DirectoryNode& DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNo
     // Move the node in the destination directory and return a reference to it
     dst.content.push_back(std::move(newNode));
     auto& result=dst.content.back();
-    dst.content.sort();
+    dst.content.sort(); //Keep content sorted
     return result;
 }
 
@@ -440,6 +440,7 @@ void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     if(relativeDstPath.empty()==false)
     {
         auto *dst=this->searchNode(relativeDstPath);
+        assert(dst!=nullptr);
         ext_last_write_time(topPath.value() / relativeDstPath,
             dst->getElement().mtime());
     }
@@ -585,7 +586,7 @@ DirectoryTree::CopyResult DirectoryTree::treeCopy(const DirectoryTree& srcTree,
             newNode.addToDirectoryContent(n);
         topContent.push_back(std::move(newNode));
         auto& result=topContent.back();
-        topContent.sort();
+        topContent.sort(); // Keep topContent sorted
         recursiveAddToIndex(result);
         return CopyResult(*src,result);
     }
@@ -595,48 +596,46 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
 {
     path srcPathAbs=srcTopPath / nodes.src.getElement().relativePath();
     path dstPathAbs=this->topPath.value() / nodes.dst.getElement().relativePath();
-    path dstPathRel=nodes.dst.getElement().relativePath();
     switch(nodes.src.getElement().type())
     {
         case file_type::regular:
         {
-            cout<<"file src"<<srcPathAbs<<"\n";
-            cout<<"file dst"<<dstPathAbs<<"\n";
+            //NOTE: copy_file copies also permissions
             bool ok=copy_file(srcPathAbs,dstPathAbs);
             if(ok==false)
                 throw runtime_error(string("Error copying ")
                     +srcPathAbs.string()+" to "+dstPathAbs.string());
-            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
-            //TODO: permissions? user? group?
+            ext_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
+            //TODO: user? group?
             break;
         }
         case file_type::symlink:
         {
-            cout<<"lnk src"<<srcPathAbs<<"\n";
-            cout<<"lnk dst"<<dstPathAbs<<"\n";
             copy_symlink(srcPathAbs,dstPathAbs);
-            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
+            ext_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
             //TODO: user? group?
             break;
         }
         case file_type::directory:
         {
-            cout<<"dir src"<<srcPathAbs<<"\n";
-            cout<<"dir dst"<<dstPathAbs<<"\n";
             bool ok=create_directory(dstPathAbs);
             if(ok==false)
                 throw runtime_error(string("Error creating directory ")
                     +dstPathAbs.string());
             for(auto& contentSrc : nodes.src.getDirectoryContent())
             {
-                path p=dstPathRel / contentSrc.getElement().relativePath().filename();
+                path p=nodes.dst.getElement().relativePath() /
+                    contentSrc.getElement().relativePath().filename();
                 auto *contentDst=this->searchNode(p);
                 assert(contentDst!=nullptr);
                 recursiveFilesystemCopy(srcTopPath,CopyResult(contentSrc,*contentDst));
             }
             //Fix mtime last so that the recursive write does not alter it again
-            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
-            //TODO: permissions? user? group?
+            //auto st=status(dstPathAbs);
+            //st.permissions(nodes.dst.getElement().permissions());
+            permissions(dstPathAbs,nodes.dst.getElement().permissions());
+            ext_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
+            //TODO: user? group?
             break;
         }
         default:
