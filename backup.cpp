@@ -162,7 +162,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
         {
             redo=false;
             cout<<"\nThe fixup operation modified the backup directory content "
-                <<"in a way that invalidated the list of inconsistencies.\n"
+                <<"in a way that invalidated the list of inconsistencies. Rechecking.\n"
                 <<"Comparing backup directory with metadata... "; cout.flush();
             diff=diff3(dstTree,meta1Tree,meta2Tree);
             cout<<"Done.\n";
