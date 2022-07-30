@@ -10,6 +10,8 @@ add_definitions(-UNDEBUG) # Enable asserts even in Release
 set(DDM_SRCS main.cpp backup.cpp core.cpp extfs.cpp)
 add_executable(ddm ${DDM_SRCS})
 
+find_package(Threads REQUIRED)
+target_link_libraries(ddm ${CMAKE_THREAD_LIBS_INIT})
 find_library(CRYPTOPP cryptopp)
 target_link_libraries(ddm ${CRYPTOPP})
 set(BOOST_LIBS program_options)
