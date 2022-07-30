@@ -434,6 +434,15 @@ void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
 
     auto result=treeCopy(srcTree,relativeSrcPath,relativeDstPath);
     recursiveFilesystemCopy(srcTree.topPath.value(),result);
+    // Fix mtime of parent directory (unless the copy occurred in the top
+    // directory, in this case the relative dst path is empty). Since the dst
+    // directory existed before, use the mtime of this tree, not the srcTree one
+    if(relativeDstPath.empty()==false)
+    {
+        auto *dst=this->searchNode(relativeDstPath);
+        ext_last_write_time(topPath.value() / relativeDstPath,
+            dst->getElement().mtime());
+    }
 }
 
 void DirectoryTree::removeFromTree(const path& relativePath)
@@ -586,7 +595,7 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
 {
     path srcPathAbs=srcTopPath / nodes.src.getElement().relativePath();
     path dstPathAbs=this->topPath.value() / nodes.dst.getElement().relativePath();
-    path dstParentRel=nodes.dst.getElement().relativePath().parent_path();
+    path dstPathRel=nodes.dst.getElement().relativePath();
     switch(nodes.src.getElement().type())
     {
         case file_type::regular:
@@ -598,7 +607,7 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
                 throw runtime_error(string("Error copying ")
                     +srcPathAbs.string()+" to "+dstPathAbs.string());
             ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
-            //TODO: permissions? user? group? parent fixup
+            //TODO: permissions? user? group?
             break;
         }
         case file_type::symlink:
@@ -607,7 +616,7 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
             cout<<"lnk dst"<<dstPathAbs<<"\n";
             copy_symlink(srcPathAbs,dstPathAbs);
             ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
-            //TODO: user? group? parent fixup
+            //TODO: user? group?
             break;
         }
         case file_type::directory:
@@ -618,15 +627,16 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
             if(ok==false)
                 throw runtime_error(string("Error creating directory ")
                     +dstPathAbs.string());
-            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
-            //TODO: permissions? user? group? parent fixup
             for(auto& contentSrc : nodes.src.getDirectoryContent())
             {
-                path p=dstParentRel / contentSrc.getElement().relativePath().filename();
+                path p=dstPathRel / contentSrc.getElement().relativePath().filename();
                 auto *contentDst=this->searchNode(p);
                 assert(contentDst!=nullptr);
                 recursiveFilesystemCopy(srcTopPath,CopyResult(contentSrc,*contentDst));
             }
+            //Fix mtime last so that the recursive write does not alter it again
+            ext_last_write_time(dstPathAbs,nodes.src.getElement().mtime());
+            //TODO: permissions? user? group?
             break;
         }
         default:
@@ -644,10 +654,15 @@ void DirectoryTree::recursiveAddToIndex(const DirectoryNode& node)
     assert(inserted.second);
     for(auto& n : node.getDirectoryContent())
     {
-        if(n.getElement().isDirectory()) recursiveAddToIndex(n);
-        auto inserted=index.insert({n.getElement().relativePath().string(),
-            const_cast<DirectoryNode*>(&n)});
-        assert(inserted.second);
+        if(n.getElement().isDirectory())
+        {
+            //The recursive call will add the element itself too
+            recursiveAddToIndex(n);
+        } else {
+            auto inserted=index.insert({n.getElement().relativePath().string(),
+                const_cast<DirectoryNode*>(&n)});
+            assert(inserted.second);
+        }
     }
 }
 

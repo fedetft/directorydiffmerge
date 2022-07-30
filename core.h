@@ -442,9 +442,9 @@ public:
      * copy, could be a file, symlink or directory
      * NOTE: relativeSrcPath cannot be empty, so it is not possible to add the
      * entire content of the srcTree with a single call
-     * \param relativeDstPath path relative to this tree pointing to a directory
-     * where the item has to be copied. Can be empty, in this case add the
-     * item to the top directory
+     * \param relativeDstPath path relative to this tree pointing to an existing
+     * directory where the item has to be copied. Path can be empty, in this
+     * case add the item to the top directory
      * \throws runtime_error if paths not found or dst path not a directory
      */
     void copyFromTree(const DirectoryTree& srcTree,
@@ -465,9 +465,9 @@ public:
      * copy, could be a file, symlink or directory
      * NOTE: relativeSrcPath cannot be empty, so it is not possible to add the
      * entire content of the srcTree with a single call
-     * \param relativeDstPath path relative to this tree pointing to a directory
-     * where the item has to be copied. Can be empty, in this case add the
-     * item to the top directory
+     * \param relativeDstPath path relative to this tree pointing to an existing
+     * directory where the item has to be copied. Path can be empty, in this
+     * case add the item to the top directory
      * \throws runtime_error if paths not found or dst path not a directory
      */
     void copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
