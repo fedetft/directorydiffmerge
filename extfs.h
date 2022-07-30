@@ -32,9 +32,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+//Forward declarartions
 class ext_file_status;
 ext_file_status ext_status(const std::filesystem::path& p);
 ext_file_status ext_symlink_status(const std::filesystem::path& p);
+std::string ext_lookup_user(uid_t uid);
+std::string ext_lookup_group(gid_t gid);
 
 /**
  * Extended version of std::filesystem::file_status. The standard does not
@@ -88,39 +91,14 @@ public:
     /**
      * \return the file user string
      */
-    std::string user() const { return lookupUser(st.st_uid); }
+    std::string user() const { return ext_lookup_user(st.st_uid); }
 
     /**
      * \return the file group string
      */
-    std::string group() const { return lookupGroup(st.st_gid); }
+    std::string group() const { return ext_lookup_group(st.st_gid); }
 
 private:
-
-    /**
-     * \param uid numerical user id
-     * \return user as string
-     */
-    static std::string lookupUser(uid_t uid);
-
-    /**
-     * \param numerical group id
-     * \return group as string
-     */
-    static std::string lookupGroup(gid_t gid);
-
-    /**
-     * Allocate structBuffer to be used by getpwuid_r/getgrgid_r
-     * Meant to be called only if structBuffer is empty
-     * Must lock the mutex m before calling this function
-     */
-    static void allocateStructBuffer();
-
-    static std::mutex m;
-    static std::string structBuffer;
-    static std::map<uid_t, std::string> userCache;
-    static std::map<gid_t, std::string> groupCache;
-
     static const std::filesystem::file_type typeLut[16];
 
     struct stat st;
@@ -156,8 +134,45 @@ inline ext_file_status ext_symlink_status(const std::filesystem::path& p)
 }
 
 /**
- * Extended version of std::filesystem::last_write_time. The sandard does not
+ * \param uid numerical user id
+ * \return user as string
+ */
+std::string ext_lookup_user(uid_t uid);
+
+/**
+ * \param user as string
+ * \return uid numerical user id
+ */
+uid_t ext_lookup_user(const std::string& user);
+
+/**
+ * \param numerical group id
+ * \return group as string
+ */
+std::string ext_lookup_group(gid_t gid);
+
+/**
+ * \param group as string
+ * \return numerical group id
+ */
+gid_t ext_lookup_group(const std::string& group);
+
+/**
+ * Extended version of std::filesystem::last_write_time. The standard does not
  * provide a way to alter the last write time of symlinks, so this one was
- * added.
+ * added. TODO: the time format is not compatible with <filesystem>, it's just
+ * a plain time_t
+ * \param p path (does not follow symlink)
+ * \param mtime last modified file time
  */
 void ext_symlink_last_write_time(const std::filesystem::path& p, time_t mtime);
+
+/**
+ * The standard does not provide a way to set the owner/group of a file,
+ * so this function provides this functionality
+ * \param p path (does not follow symlink)
+ * \param user new user
+ * \param group new grup
+ */
+void ext_symlink_change_ownership(const std::filesystem::path& p,
+                                  const std::string& user, const std::string& group);

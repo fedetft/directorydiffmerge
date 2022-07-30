@@ -359,7 +359,7 @@ void DirectoryTree::readFrom(istream& is, const string& metadataFileName)
             if(p!=e.relativePath().parent_path()) fail("different paths grouped");
             auto inserted=index.insert({e.relativePath().string(),&n});
             if(inserted.second==false) fail("index insert failed (duplicate?)");
-            if(e.type()==file_type::unknown && warningCallback)
+            if(e.type()==file_type::unknown)
                 warningCallback(string("Warning: ")+e.relativePath().string()+" unsupported file type");
         }
         if(topContent.empty())
@@ -528,9 +528,9 @@ void DirectoryTree::recursiveBuildFromPath(const path& p)
         auto& e=n.getElement();
         auto inserted=index.insert({e.relativePath().string(),&n});
         assert(inserted.second==true);
-        if(e.type()==file_type::unknown && warningCallback)
+        if(e.type()==file_type::unknown)
             warningCallback(string("Warning: ")+e.relativePath().string()+" unsupported file type");
-        if(e.type()!=file_type::directory && e.hardLinkCount()!=1 && warningCallback)
+        if(e.type()!=file_type::directory && e.hardLinkCount()!=1)
             warningCallback(string("Warning: ")+e.relativePath().string()+" has multiple hardlinks");
     }
 
@@ -594,54 +594,48 @@ DirectoryTree::CopyResult DirectoryTree::treeCopy(const DirectoryTree& srcTree,
 
 void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult nodes)
 {
+    auto e=nodes.dst.getElement();
     path srcPathAbs=srcTopPath / nodes.src.getElement().relativePath();
-    path dstPathAbs=this->topPath.value() / nodes.dst.getElement().relativePath();
-    switch(nodes.src.getElement().type())
+    path dstPathAbs=this->topPath.value() / e.relativePath();
+    switch(e.type())
     {
         case file_type::regular:
-        {
             //NOTE: copy_file copies also permissions
-            bool ok=copy_file(srcPathAbs,dstPathAbs);
-            if(ok==false)
+            if(copy_file(srcPathAbs,dstPathAbs)==false)
                 throw runtime_error(string("Error copying ")
                     +srcPathAbs.string()+" to "+dstPathAbs.string());
-            ext_symlink_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
-            //TODO: user? group?
             break;
-        }
         case file_type::symlink:
-        {
             copy_symlink(srcPathAbs,dstPathAbs);
-            ext_symlink_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
-            //TODO: user? group?
             break;
-        }
         case file_type::directory:
-        {
-            bool ok=create_directory(dstPathAbs);
-            if(ok==false)
+            if(create_directory(dstPathAbs)==false)
                 throw runtime_error(string("Error creating directory ")
                     +dstPathAbs.string());
             for(auto& contentSrc : nodes.src.getDirectoryContent())
             {
-                path p=nodes.dst.getElement().relativePath() /
+                path p=e.relativePath() /
                     contentSrc.getElement().relativePath().filename();
                 auto *contentDst=this->searchNode(p);
                 assert(contentDst!=nullptr);
                 recursiveFilesystemCopy(srcTopPath,CopyResult(contentSrc,*contentDst));
             }
-            //Fix mtime last so that the recursive write does not alter it again
-            //auto st=status(dstPathAbs);
-            //st.permissions(nodes.dst.getElement().permissions());
-            permissions(dstPathAbs,nodes.dst.getElement().permissions());
-            ext_symlink_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
-            //TODO: user? group?
+            permissions(dstPathAbs,e.permissions());
             break;
-        }
         default:
             throw runtime_error(string("DirectoryTree::recursiveFilesystemCopy")
                 +": unknown file type "+srcPathAbs.string());
     }
+    //Don't consider owner/group setting failure an error
+    try {
+        ext_symlink_change_ownership(dstPathAbs,e.user(),e.group());
+    } catch(exception& e) {
+        warningCallback(string("Warning: could not change ownership of ")
+            +dstPathAbs.string()+": maybe retry with sudo? e="+e.what());
+    }
+    //Fix mtime last, for directories it's important as recursive write would
+    //alter mtime again
+    ext_symlink_last_write_time(dstPathAbs,e.mtime());
 }
 
 void DirectoryTree::recursiveAddToIndex(const DirectoryNode& node)

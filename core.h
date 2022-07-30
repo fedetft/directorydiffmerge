@@ -18,6 +18,7 @@
 #pragma once
 
 #include <filesystem>
+#include <iostream>
 #include <ostream>
 #include <istream>
 #include <list>
@@ -532,7 +533,8 @@ private:
 
     std::list<DirectoryNode> topContent;
     std::unordered_map<std::string,DirectoryNode*> index;
-    std::function<void (const std::string&)> warningCallback;
+    std::function<void (const std::string&)> warningCallback=
+        [](const std::string& s){ std::cerr<<s<<'\n'; };
     std::optional<std::filesystem::path> topPath; // Only if built from directory
     ScanOpt opt;                      // Only used by recursiveBuildFromPath
     mutable std::ostream *os=nullptr; // Only used by recursiveWrite
