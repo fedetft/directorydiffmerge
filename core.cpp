@@ -441,8 +441,7 @@ void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     {
         auto *dst=this->searchNode(relativeDstPath);
         assert(dst!=nullptr);
-        ext_last_write_time(topPath.value() / relativeDstPath,
-            dst->getElement().mtime());
+        ext_symlink_last_write_time(topPath.value() / relativeDstPath, dst->getElement().mtime());
     }
 }
 
@@ -494,7 +493,8 @@ int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
     {
         auto it=index.find(parent.string());
         assert(it!=index.end());
-        ext_last_write_time(topPath.value() / parent,it->second->getElement().mtime());
+        ext_symlink_last_write_time(topPath.value() / parent,
+                                    it->second->getElement().mtime());
     }
 
     return result;
@@ -605,14 +605,14 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
             if(ok==false)
                 throw runtime_error(string("Error copying ")
                     +srcPathAbs.string()+" to "+dstPathAbs.string());
-            ext_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
+            ext_symlink_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
             //TODO: user? group?
             break;
         }
         case file_type::symlink:
         {
             copy_symlink(srcPathAbs,dstPathAbs);
-            ext_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
+            ext_symlink_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
             //TODO: user? group?
             break;
         }
@@ -634,7 +634,7 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
             //auto st=status(dstPathAbs);
             //st.permissions(nodes.dst.getElement().permissions());
             permissions(dstPathAbs,nodes.dst.getElement().permissions());
-            ext_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
+            ext_symlink_last_write_time(dstPathAbs,nodes.dst.getElement().mtime());
             //TODO: user? group?
             break;
         }

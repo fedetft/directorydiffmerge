@@ -101,7 +101,7 @@ const file_type ext_file_status::typeLut[16]=
 //
 //
 
-void ext_last_write_time(const path& p, time_t mtime)
+void ext_symlink_last_write_time(const path& p, time_t mtime)
 {
     string s=p.string();
     timespec t[2];
@@ -112,3 +112,6 @@ void ext_last_write_time(const path& p, time_t mtime)
     if(utimensat(AT_FDCWD,s.c_str(),t,AT_SYMLINK_NOFOLLOW)!=0)
         throw runtime_error(string("ext_last_write_time failed with path ")+s);
 }
+
+//TODO
+// int lchown(const char *path, uid_t owner, gid_t group)

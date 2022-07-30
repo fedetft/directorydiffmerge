@@ -16,9 +16,8 @@
  ***************************************************************************/
 
 /*
- * An extended version of the C++17 <filesystem> status() and symlink_status()
- * calls exposing also the file's user and group strings, as well as modified
- * time.
+ * An extended version of the C++17 <filesystem> API providing some missing
+ * features.
  */
 
 #pragma once
@@ -38,7 +37,11 @@ ext_file_status ext_status(const std::filesystem::path& p);
 ext_file_status ext_symlink_status(const std::filesystem::path& p);
 
 /**
- * Extended version of std::filesystem::file_status
+ * Extended version of std::filesystem::file_status. The standard does not
+ * provide a way to get the user and group of a file, so this one was added.
+ * Moreover, although the standard has a way to get the last write time, it
+ * is a separate call requiring a second stat syscall per file, while this
+ * extended version allows to access the modified time with a single stat.
  */
 class ext_file_status
 {
@@ -153,7 +156,8 @@ inline ext_file_status ext_symlink_status(const std::filesystem::path& p)
 }
 
 /**
- * Extended version of std::filesystem::last_write_time that does not follow
- * symlinks
+ * Extended version of std::filesystem::last_write_time. The sandard does not
+ * provide a way to alter the last write time of symlinks, so this one was
+ * added.
  */
-void ext_last_write_time(const std::filesystem::path& p, time_t mtime);
+void ext_symlink_last_write_time(const std::filesystem::path& p, time_t mtime);
