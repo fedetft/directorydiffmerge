@@ -49,7 +49,7 @@ CompareOpt::CompareOpt(const string& ignoreString)
     replace(begin(s),end(s),',',' ');
     istringstream ss(s);
     string line;
-    while(getline(ss,line))
+    while(ss>>line)
     {
         if(line=="perm")         perm=false;
         else if(line=="owner")   owner=false;
