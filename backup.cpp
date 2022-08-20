@@ -130,17 +130,20 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
  * \param meta1 first copy of the metadata path
  * \param meta2 second copy of the metadata path
  * \param fixup if true, attempt to fix inconsistencies in the backup directory
+ * \param warningCallback warning callback
  * \return 0 if no action was needed,
  *         1 if recoverable errors found and fixed
  *         2 if unrecoverable errors found
  */
 static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
-                     const path& meta1, const path& meta2, bool fixup)
+                     const path& meta1, const path& meta2, bool fixup,
+                     function<void (const string&)> warningCallback)
 {
     cout<<"Loading metatata files... "; cout.flush();
     DirectoryTree meta1Tree, meta2Tree;
     try {
-        //FIXME handle warning callback
+        if(warningCallback) meta1Tree.setWarningCallback(warningCallback);
+        if(warningCallback) meta2Tree.setWarningCallback(warningCallback);
         meta1Tree.readFrom(meta1);
         meta2Tree.readFrom(meta2);
         cout<<"Done.\n";
@@ -296,28 +299,30 @@ void scanSourceTargetDir(const path& src, const path& dst, bool threads,
     }
 }
 
-int scrub(const path& dst, const path& meta1, const path& meta2, bool fixup)
+int scrub(const path& dst, const path& meta1, const path& meta2, bool fixup,
+          function<void (const string&)> warningCallback)
 {
     cout<<"Scrubbing backup directory "<<dst<<"\n"
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
         <<"Scanning backup directory... "; cout.flush();
     DirectoryTree dstTree;
-    //FIXME handle warning callback
+    if(warningCallback) dstTree.setWarningCallback(warningCallback);
     dstTree.scanDirectory(dst);
     cout<<"Done.\n";
-    return scrubImpl(nullptr,dstTree,meta1,meta2,fixup);
+    return scrubImpl(nullptr,dstTree,meta1,meta2,fixup,warningCallback);
 }
 
 int scrub(const path& src, const path& dst, const path& meta1, const path& meta2,
-          bool fixup, bool threads)
+          bool fixup, bool threads, function<void (const string&)> warningCallback)
 {
     cout<<"Scrubbing backup directory "<<dst<<"\n"
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
         <<"and with source directory "<<src<<"\n"
         <<"Scanning backup directory... "; cout.flush();
     DirectoryTree srcTree, dstTree;
-    //FIXME handle warning callback
+    if(warningCallback) srcTree.setWarningCallback(warningCallback);
+    if(warningCallback) dstTree.setWarningCallback(warningCallback);
     scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
     cout<<"Done.\n";
-    return scrubImpl(&srcTree,dstTree,meta1,meta2,fixup);
+    return scrubImpl(&srcTree,dstTree,meta1,meta2,fixup,warningCallback);
 }

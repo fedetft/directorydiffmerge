@@ -41,6 +41,7 @@ void scanSourceTargetDir(const std::filesystem::path& src,
  * \param meta1 first copy of the metadata for the destination directory
  * \param meta2 second copy of the metadata for the destination directory
  * \param fixup if true, attempt to fix inconsistencies in the backup directory
+ * \param warningCallback warning callback
  * \return 0 if no action was needed,
  *         1 if recoverable errors found and fixed
  *         2 if unrecoverable errors found
@@ -48,7 +49,8 @@ void scanSourceTargetDir(const std::filesystem::path& src,
 int scrub(const std::filesystem::path& dst,
           const std::filesystem::path& meta1,
           const std::filesystem::path& meta2,
-          bool fixup);
+          bool fixup,
+          std::function<void (const std::string&)> warningCallback={});
 
 /**
  * Scrub both the directory to be backed up and the backup directory
@@ -57,6 +59,7 @@ int scrub(const std::filesystem::path& dst,
  * \param meta1 first copy of the metadata for the destination directory
  * \param meta2 second copy of the metadata for the destination directory
  * \param fixup if true, attempt to fix inconsistencies in the backup directory
+ * \param warningCallback warning callback
  * \param threads if true, scan in parallel
  * \return 0 if no action was needed,
  *         1 if recoverable errors found and fixed
@@ -66,4 +69,5 @@ int scrub(const std::filesystem::path& src,
           const std::filesystem::path& dst,
           const std::filesystem::path& meta1,
           const std::filesystem::path& meta2,
-          bool fixup, bool threads);
+          bool fixup, bool threads,
+          std::function<void (const std::string&)> warningCallback={});
