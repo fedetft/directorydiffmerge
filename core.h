@@ -502,9 +502,31 @@ public:
      */
     int removeFromTreeAndFilesystem(const std::filesystem::path& relativePath);
 
+    /**
+     * Add a symlink to this tree.
+     * \param symlink FilesystemElement of type symlink. It will be added to the
+     * tree to the relative path specified in the FilesystemElement itself.
+     * \throws runtime_error if the relative path does refers to a directory
+     * not already present in the tree
+     */
+    void addSymlinkToTree(const FilesystemElement& symlink);
+
+    /**
+     * Add a symlink to this tree and the filesystem.
+     * WARNING: this actually creates the symlink on your filesystem!
+     * \param symlink FilesystemElement of type symlink. It will be added to the
+     * tree to the relative path specified in the FilesystemElement itself.
+     * \throws runtime_error if the relative path does refers to a directory
+     * not already present in the tree or if the tree was not constructed by
+     * scanning a directory
+     */
+    void addSymlinkToTreeAndFilesystem(const FilesystemElement& symlink);
+
 private:
     // This version of searchNode that returns a non-const pointer is private
     DirectoryNode *searchNode(const std::filesystem::path& p);
+
+    void fixupParentMtime(const std::filesystem::path& parent);
 
     void recursiveBuildFromPath(const std::filesystem::path& p);
 

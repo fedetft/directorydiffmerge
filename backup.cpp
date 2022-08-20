@@ -48,8 +48,18 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
     if(!d[0])
     {
         string type=d[1].value().typeAsString();
+        file_type ty=d[1].value().type();
         cout<<"The "<<type<<" is missing in the backup directory "
             <<"but the metadata files agree it should be there.\n";
+        //Symlinks are special, as the metadata file contains enough information
+        //(the link target) to recreate them
+        if(ty==file_type::symlink)
+        {
+            cout<<"Creating the missing symbolic link.\n";
+            dstTree.addSymlinkToTreeAndFilesystem(d[1].value());
+            return FixupResult::Success;
+        }
+        //Handling regular files and directories
         if(srcTree==nullptr)
         {
             cout<<"If you re-run the scrub giving me also the source directory "
@@ -80,7 +90,6 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 dstTree.copyFromTreeAndFilesystem(*srcTree,
                     d[1].value().relativePath(),
                     d[1].value().relativePath().parent_path());
-                file_type ty=d[1].value().type();
                 return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
                                                 : FixupResult::Success;
             } else {
@@ -234,14 +243,22 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
         cout<<redb<<"Unrecoverable inconsistencies found."<<reset<<" You will "
             <<"need to manually fix the backup directory.\n";
         if(maybeRecoverable)
+        {
             cout<<"Some inconsistencies may be automatically recoverable by "
                 <<"running again this command with the --fixup option.\n";
+            if(srcTree==nullptr)
+                cout<<"You may want to give me access to the source diectory "
+                    <<"as well (-s option)\n";
+        }
         return 2;
     } else {
         cout<<redb<<"Unrecovered inconsistencies found."<<reset<<" However it "
             <<"looks like it is possible to attempt recovering all "
             <<"inconsistencies automatically by running this command again "
             <<"and adding the --fixup option.\n";
+        if(srcTree==nullptr)
+            cout<<"You may want to give me access to the source diectory "
+                <<"as well (-s option)\n";
         return 2;
     }
 }

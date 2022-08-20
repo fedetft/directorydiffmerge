@@ -435,15 +435,7 @@ void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
 
     auto result=treeCopy(srcTree,relativeSrcPath,relativeDstPath);
     recursiveFilesystemCopy(srcTree.topPath.value(),result);
-    // Fix mtime of parent directory (unless the copy occurred in the top
-    // directory, in this case the relative dst path is empty). Since the dst
-    // directory existed before, use the mtime of this tree, not the srcTree one
-    if(relativeDstPath.empty()==false)
-    {
-        auto *dst=this->searchNode(relativeDstPath);
-        assert(dst!=nullptr);
-        ext_symlink_last_write_time(topPath.value() / relativeDstPath, dst->getElement().mtime());
-    }
+    fixupParentMtime(relativeDstPath);
 }
 
 void DirectoryTree::removeFromTree(const path& relativePath)
@@ -486,19 +478,50 @@ int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
     //Remove from filesystem
     int result=remove_all(topPath.value() / relativePath);
 
-    //If file is in a subdirectory, fixup mtime of parent directory
     //TODO: tested without this and remove_all did not seem to update the parent
     //directory mtime, is this really needed?
-    path parent=relativePath.parent_path();
-    if(parent.empty()==false)
-    {
-        auto it=index.find(parent.string());
-        assert(it!=index.end());
-        ext_symlink_last_write_time(topPath.value() / parent,
-                                    it->second->getElement().mtime());
-    }
+    fixupParentMtime(relativePath.parent_path());
 
     return result;
+}
+
+void DirectoryTree::addSymlinkToTree(const FilesystemElement& symlink)
+{
+    assert(symlink.type()==file_type::symlink);
+    string parentPath=symlink.relativePath().parent_path().string();
+    if(parentPath.empty())
+    {
+        topContent.push_back(DirectoryNode(symlink));
+        topContent.sort(); // Keep topContent sorted
+    } else {
+        auto *parent=searchNode(parentPath);
+        if(parent==nullptr)
+            throw runtime_error("DirectoryTree::addSymlinkToTree: missing parent");
+        parent->addToDirectoryContent(DirectoryNode(symlink));
+    }
+}
+
+void DirectoryTree::addSymlinkToTreeAndFilesystem(const FilesystemElement& symlink)
+{
+    if(topPath.has_value()==false)
+        throw runtime_error("DirectoryTree::addSymlinkToTreeAndFilesystem");
+
+    addSymlinkToTree(symlink);
+    path absPath=topPath.value() / symlink.relativePath();
+    //Code is not portable outside of POSIX systems, as we should call
+    //create_directory_symlink if the link is to a directory, but we don't know
+    create_symlink(symlink.symlinkTarget(),absPath);
+
+    //Don't consider owner/group setting failure an error
+    try {
+        ext_symlink_change_ownership(absPath,symlink.user(),symlink.group());
+    } catch(exception& e) {
+        warningCallback(string("Warning: could not change ownership of ")
+            +absPath.string()+": maybe retry with sudo? e="+e.what());
+    }
+    //Fix mtime
+    ext_symlink_last_write_time(absPath,symlink.mtime());
+    fixupParentMtime(symlink.relativePath().parent_path());
 }
 
 DirectoryNode *DirectoryTree::searchNode(const path& p)
@@ -506,6 +529,16 @@ DirectoryNode *DirectoryTree::searchNode(const path& p)
     auto it=index.find(p);
     if(it==index.end()) return nullptr;
     return it->second;
+}
+
+void DirectoryTree::fixupParentMtime(const path& parent)
+{
+    if(parent.empty()) return;
+    //If file is in a subdirectory, fixup mtime of parent directory
+    auto it=index.find(parent.string());
+    assert(it!=index.end());
+    ext_symlink_last_write_time(topPath.value() / parent,
+                                it->second->getElement().mtime());
 }
 
 void DirectoryTree::recursiveBuildFromPath(const path& p)
