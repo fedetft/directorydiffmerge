@@ -295,7 +295,9 @@ DirectoryNode& DirectoryNode::addToDirectoryContent(const DirectoryNode& toAdd)
 {
     path newName=this->elem.relativePath() / toAdd.elem.relativePath().filename();
     for(auto& n : this->content) assert(n.elem.relativePath()!=newName);
-    return recursiveAdd(*this,toAdd);
+    auto& result=recursiveAdd(*this,toAdd);
+    content.sort(); //Keep content sorted
+    return result;
 }
 
 DirectoryNode& DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
@@ -306,11 +308,10 @@ DirectoryNode& DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNo
     // Assign to the copied node the source element with fixed path
     DirectoryNode newNode(FilesystemElement(src.elem,dst.elem.relativePath() / name));
     for(auto& n : src.content) recursiveAdd(newNode,n);
+    newNode.content.sort(); //Keep content sorted
     // Move the node in the destination directory and return a reference to it
     dst.content.push_back(std::move(newNode));
-    auto& result=dst.content.back();
-    dst.content.sort(); //Keep content sorted
-    return result;
+    return dst.content.back();
 }
 
 //
