@@ -158,6 +158,10 @@ void FilesystemElement::readFrom(const string& metadataLine,
     tz.resize(6);
     in.read(tz.data(),6);
     if(!in || tz!=" +0000") fail("Error reading mtime");
+    //Initialize type-dependent fields to default
+    sz=0;
+    fileHash.clear();
+    symlink.clear();
     switch(ty)
     {
         case file_type::regular:
