@@ -138,9 +138,19 @@ public:
     std::filesystem::perms permissions() const { return per; }
 
     /**
+     * Modify permissions
+     */
+    void setPermissions(std::filesystem::perms per) { this->per=per; }
+
+    /**
      * \return the owner (user) of the FilesystemElement as a string
      */
     std::string user() const { return us; }
+
+    /**
+     * Modify user
+     */
+    void setUser(const std::string& us) { this->us=us; }
 
     /**
      * \return the group of the FilesystemElement as a string
@@ -148,9 +158,19 @@ public:
     std::string group() const { return gs; }
 
     /**
+     * Modify group
+     */
+    void setGroup(const std::string& gs) { this->gs=gs; }
+
+    /**
      * \return the last modified time
      */
     time_t mtime() const { return mt; }
+
+    /**
+     * Modify mtime
+     */
+    void setMtime(time_t mt) { this->mt=mt; }
 
     /**
      * \return the file size.
@@ -296,6 +316,25 @@ public:
      * \return a reference to the newly added node
      */
     DirectoryNode& addToDirectoryContent(const DirectoryNode& toAdd);
+
+    /**
+     * Modify permissions
+     */
+    void setPermissions(std::filesystem::perms perm) { elem.setPermissions(perm); }
+
+    /**
+     * Modify owner (user/group)
+     */
+    void setOwner(const std::string& user, const std::string& group)
+    {
+        elem.setUser(user);
+        elem.setGroup(group);
+    }
+
+    /**
+     * Modify mtime
+     */
+    void setMtime(time_t mtime) { elem.setMtime(mtime); }
 
 private:
     static DirectoryNode& recursiveAdd(DirectoryNode& dst, const DirectoryNode& src);
@@ -521,6 +560,74 @@ public:
      * scanning a directory
      */
     void addSymlinkToTreeAndFilesystem(const FilesystemElement& symlink);
+
+    /**
+     * Modify permissions of an entry in this tree.
+     * \param relativePath relative path of the entry to modify.
+     * \param perms new permissions
+     * \throws runtime_error if the relative path does refers to an entry not
+     * present in the tree
+     */
+    void modifyPermissionsInTree(const std::filesystem::path& relativePath,
+                                 std::filesystem::perms perm);
+
+    /**
+     * Modify permissions of an entry in this tree and the filesystem.
+     * WARNING: this actually alters the entry on your filesystem!
+     * \param relativePath relative path of the entry to modify.
+     * \param perms new permissions
+     * \throws runtime_error if the relative path does refers to an entry not
+     * present in the tree or if the tree was not constructed by scanning a
+     * directory
+     */
+    void modifyPermissionsInTreeAndFilesystem(const std::filesystem::path& relativePath,
+                                              std::filesystem::perms perm);
+
+    /**
+     * Modify owner (user/group) of an entry in this tree.
+     * \param relativePath relative path of the entry to modify.
+     * \param user new user
+     * \param group new group
+     * \throws runtime_error if the relative path does refers to an entry not
+     * present in the tree
+     */
+    void modifyOwnerInTree(const std::filesystem::path& relativePath,
+                           const std::string& user, const std::string& group);
+
+    /**
+     * Modify owner (user/group) of an entry in this tree and the filesystem.
+     * WARNING: this actually alters the entry on your filesystem!
+     * \param relativePath relative path of the entry to modify.
+     * \param user new user
+     * \param group new group
+     * \throws runtime_error if the relative path does refers to an entry not
+     * present in the tree or if the tree was not constructed by scanning a
+     * directory
+     */
+    void modifyOwnerInTreeAndFilesystem(const std::filesystem::path& relativePath,
+                                        const std::string& user, const std::string& group);
+
+    /**
+     * Modify the last modified time (mtime) of an entry in this tree.
+     * \param relativePath relative path of the entry to modify.
+     * \param mtime new modified time
+     * \throws runtime_error if the relative path does refers to an entry not
+     * present in the tree
+     */
+    void modifyMtimeInTree(const std::filesystem::path& relativePath, time_t mtime);
+
+    /**
+     * Modify the last modified time (mtime) of an entry in this tree and the
+     * filesystem.
+     * WARNING: this actually alters the entry on your filesystem!
+     * \param relativePath relative path of the entry to modify.
+     * \param mtime new modified time
+     * \throws runtime_error if the relative path does refers to an entry not
+     * present in the tree or if the tree was not constructed by scanning a
+     * directory
+     */
+    void modifyMtimeInTreeAndFilesystem(const std::filesystem::path& relativePath,
+                                        time_t mtime);
 
 private:
     // This version of searchNode that returns a non-const pointer is private

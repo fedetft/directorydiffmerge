@@ -528,6 +528,55 @@ void DirectoryTree::addSymlinkToTreeAndFilesystem(const FilesystemElement& symli
     fixupParentMtime(symlink.relativePath().parent_path());
 }
 
+void DirectoryTree::modifyPermissionsInTree(const path& relativePath, perms perm)
+{
+    auto *node=searchNode(relativePath);
+    if(node==nullptr) throw runtime_error("path not found in tree");
+    node->setPermissions(perm);
+}
+
+void DirectoryTree::modifyPermissionsInTreeAndFilesystem(const path& relativePath,
+                                                         perms perm)
+{
+    if(topPath.has_value()==false)
+        throw runtime_error("DirectoryTree::modifyPermissionsInTreeAndFilesystem");
+    modifyPermissionsInTree(relativePath,perm);
+    permissions(topPath.value() / relativePath,perm);
+}
+
+void DirectoryTree::modifyOwnerInTree(const path& relativePath,
+                                      const string& user, const string& group)
+{
+    auto *node=searchNode(relativePath);
+    if(node==nullptr) throw runtime_error("path not found in tree");
+    node->setOwner(user,group);
+}
+
+void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
+                                                   const string& user, const string& group)
+{
+    if(topPath.has_value()==false)
+        throw runtime_error("DirectoryTree::modifyUserInTreeAndFilesystem");
+    modifyOwnerInTree(relativePath,user,group);
+    ext_symlink_change_ownership(topPath.value() / relativePath,user,group);
+}
+
+void DirectoryTree::modifyMtimeInTree(const path& relativePath, time_t mtime)
+{
+    auto *node=searchNode(relativePath);
+    if(node==nullptr) throw runtime_error("path not found in tree");
+    node->setMtime(mtime);
+}
+
+void DirectoryTree::modifyMtimeInTreeAndFilesystem(const path& relativePath,
+                                                   time_t mtime)
+{
+    if(topPath.has_value()==false)
+        throw runtime_error("DirectoryTree::modifyMtimeInTreeAndFilesystem");
+    modifyMtimeInTree(relativePath,mtime);
+    ext_symlink_last_write_time(topPath.value() / relativePath,mtime);
+}
+
 DirectoryNode *DirectoryTree::searchNode(const path& p)
 {
     auto it=index.find(p);
