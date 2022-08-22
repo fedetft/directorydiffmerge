@@ -109,8 +109,8 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
                                                 : FixupResult::Success;
             } else {
-                cout<<"Something was found in the source directory however, its "
-                    <<"properties\n"<<item.value()<<" do not match the missing "
+                cout<<"An entry was found in the source directory however, its "
+                    <<"properties\n"<<item.value()<<"\ndo not match the missing "
                     <<type<<"\n";
                 CompareOpt opt;
                 opt.perm=false;
@@ -118,7 +118,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 opt.mtime=false;
                 if(compare(item.value(),d[1].value(),opt))
                 {
-                    cout<<"However, only metadata differ, updating backup\n";
+                    cout<<"However, only metadata differ, updating backup.\n";
                     dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,
                                                       relpath.parent_path());
                     if(item.value().permissions()!=d[1].value().permissions())
