@@ -440,8 +440,8 @@ const DirectoryNode& DirectoryTree::searchNode(const path& p, const string& wher
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
-    if(topPath.has_value()==false || srcTree.topPath.has_value()==false)
-        throw runtime_error("DirectoryTree::copyFromTreeAndFilesystem");
+    this->checkTopPath("copyFromTreeAndFilesystem");
+    srcTree.checkTopPath("copyFromTreeAndFilesystem");
 
     auto result=treeCopy(srcTree,relativeSrcPath,relativeDstPath);
     recursiveFilesystemCopy(srcTree.topPath.value(),result);
@@ -471,8 +471,7 @@ void DirectoryTree::removeFromTree(const path& relativePath)
 
 int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
 {
-    if(topPath.has_value()==false)
-        throw runtime_error("DirectoryTree::removeFromTreeAndFilesystem");
+    checkTopPath("removeFromTreeAndFilesystem");
 
     //Remove from tree first, this checks if path exists too
     removeFromTree(relativePath);
@@ -503,8 +502,7 @@ void DirectoryTree::addSymlinkToTree(const FilesystemElement& symlink)
 
 void DirectoryTree::addSymlinkToTreeAndFilesystem(const FilesystemElement& symlink)
 {
-    if(topPath.has_value()==false)
-        throw runtime_error("DirectoryTree::addSymlinkToTreeAndFilesystem");
+    checkTopPath("addSymlinkToTreeAndFilesystem");
 
     addSymlinkToTree(symlink);
     path absPath=topPath.value() / symlink.relativePath();
@@ -533,8 +531,7 @@ void DirectoryTree::modifyPermissionsInTree(const path& relativePath, perms perm
 void DirectoryTree::modifyPermissionsInTreeAndFilesystem(const path& relativePath,
                                                          perms perm)
 {
-    if(topPath.has_value()==false)
-        throw runtime_error("DirectoryTree::modifyPermissionsInTreeAndFilesystem");
+    checkTopPath("modifyPermissionsInTreeAndFilesystem");
     modifyPermissionsInTree(relativePath,perm);
     permissions(topPath.value() / relativePath,perm);
 }
@@ -549,8 +546,7 @@ void DirectoryTree::modifyOwnerInTree(const path& relativePath,
 void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
                                                    const string& user, const string& group)
 {
-    if(topPath.has_value()==false)
-        throw runtime_error("DirectoryTree::modifyUserInTreeAndFilesystem");
+    checkTopPath("modifyUserInTreeAndFilesystem");
     modifyOwnerInTree(relativePath,user,group);
     ext_symlink_change_ownership(topPath.value() / relativePath,user,group);
 }
@@ -564,8 +560,7 @@ void DirectoryTree::modifyMtimeInTree(const path& relativePath, time_t mtime)
 void DirectoryTree::modifyMtimeInTreeAndFilesystem(const path& relativePath,
                                                    time_t mtime)
 {
-    if(topPath.has_value()==false)
-        throw runtime_error("DirectoryTree::modifyMtimeInTreeAndFilesystem");
+    checkTopPath("modifyMtimeInTreeAndFilesystem");
     modifyMtimeInTree(relativePath,mtime);
     ext_symlink_last_write_time(topPath.value() / relativePath,mtime);
 }
@@ -581,6 +576,12 @@ DirectoryNode& DirectoryTree::searchNode(const path& p, const string& where)
         throw runtime_error(message);
     }
     return *it->second;
+}
+
+void DirectoryTree::checkTopPath(const std::string& where) const
+{
+    if(topPath.has_value()==false)
+        throw runtime_error(where+": DirectoryTree not constructed from filesystem");
 }
 
 void DirectoryTree::fixupParentMtime(const path& parent)

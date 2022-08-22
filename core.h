@@ -638,6 +638,8 @@ private:
     DirectoryNode& searchNode(const std::filesystem::path& p,
                               const std::string& where="");
 
+    void checkTopPath(const std::string& where) const;
+
     void fixupParentMtime(const std::filesystem::path& parent);
 
     void recursiveBuildFromPath(const std::filesystem::path& p);
