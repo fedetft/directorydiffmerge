@@ -424,11 +424,17 @@ optional<FilesystemElement> DirectoryTree::search(const path& p) const
     return it->second->getElement();
 }
 
-const DirectoryNode *DirectoryTree::searchNode(const path& p) const
+const DirectoryNode& DirectoryTree::searchNode(const path& p, const string& where) const
 {
     auto it=index.find(p);
-    if(it==index.end()) return nullptr;
-    return it->second;
+    if(it==index.end())
+    {
+        string message="DirectoryTree::searchNode could not find the path ";
+        message+=p.string();
+        if(where.empty()==false) message+=". Called from "+where;
+        throw runtime_error(message);
+    }
+    return *it->second;
 }
 
 void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
@@ -444,31 +450,23 @@ void DirectoryTree::copyFromTreeAndFilesystem(const DirectoryTree& srcTree,
 
 void DirectoryTree::removeFromTree(const path& relativePath)
 {
-    string rp=relativePath.string();
-    auto it=index.find(rp);
-    if(it==index.end())
-        throw runtime_error(string("DirectoryTree::removeFromTree: path not found ")+rp);
+    auto& node=searchNode(relativePath,"removeFromTree");
 
     //If directory remove from index all childs
-    if(it->second->getElement().isDirectory())
-        recursiveRemoveFromIndex(*it->second);
+    if(node.getElement().isDirectory()) recursiveRemoveFromIndex(node);
 
     //Remove the DirectoryNode itself (and all its childs if directory)
     path parent=relativePath.parent_path();
-    if(parent.empty()==false)
-    {
-        auto it2=index.find(parent.string());
-        assert(it2!=index.end());
-        it2->second->removeFromDirectoryContent(*it->second);
-    } else {
-        //NOTE: removing the node could invalidate the it->second reference, so copy
-        FilesystemElement removeElem=it->second->getElement();
+    if(parent.empty()==false) searchNode(parent).removeFromDirectoryContent(node);
+    else {
+        //NOTE: removing the node could invalidate the node reference, so copy
+        FilesystemElement removeElem=node.getElement();
         topContent.remove_if([&](const DirectoryNode& e){
             return e.getElement()==removeElem;
         });
     }
     //Remove the path from the index (done last as invalidates it)
-    index.erase(rp);
+    index.erase(relativePath.string());
 }
 
 int DirectoryTree::removeFromTreeAndFilesystem(const path& relativePath)
@@ -498,10 +496,8 @@ void DirectoryTree::addSymlinkToTree(const FilesystemElement& symlink)
         topContent.push_back(DirectoryNode(symlink));
         topContent.sort(); // Keep topContent sorted
     } else {
-        auto *parent=searchNode(parentPath);
-        if(parent==nullptr)
-            throw runtime_error("DirectoryTree::addSymlinkToTree: missing parent");
-        parent->addToDirectoryContent(DirectoryNode(symlink));
+        auto& parent=searchNode(parentPath,"addSymlinkToTree: missing parent");
+        parent.addToDirectoryContent(DirectoryNode(symlink));
     }
 }
 
@@ -530,9 +526,8 @@ void DirectoryTree::addSymlinkToTreeAndFilesystem(const FilesystemElement& symli
 
 void DirectoryTree::modifyPermissionsInTree(const path& relativePath, perms perm)
 {
-    auto *node=searchNode(relativePath);
-    if(node==nullptr) throw runtime_error("path not found in tree");
-    node->setPermissions(perm);
+    auto& node=searchNode(relativePath,"modifyPermissionsInTree");
+    node.setPermissions(perm);
 }
 
 void DirectoryTree::modifyPermissionsInTreeAndFilesystem(const path& relativePath,
@@ -547,9 +542,8 @@ void DirectoryTree::modifyPermissionsInTreeAndFilesystem(const path& relativePat
 void DirectoryTree::modifyOwnerInTree(const path& relativePath,
                                       const string& user, const string& group)
 {
-    auto *node=searchNode(relativePath);
-    if(node==nullptr) throw runtime_error("path not found in tree");
-    node->setOwner(user,group);
+    auto& node=searchNode(relativePath,"modifyOwnerInTree");
+    node.setOwner(user,group);
 }
 
 void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
@@ -563,9 +557,8 @@ void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
 
 void DirectoryTree::modifyMtimeInTree(const path& relativePath, time_t mtime)
 {
-    auto *node=searchNode(relativePath);
-    if(node==nullptr) throw runtime_error("path not found in tree");
-    node->setMtime(mtime);
+    auto& node=searchNode(relativePath,"modifyMtimeInTree");
+    node.setMtime(mtime);
 }
 
 void DirectoryTree::modifyMtimeInTreeAndFilesystem(const path& relativePath,
@@ -577,21 +570,25 @@ void DirectoryTree::modifyMtimeInTreeAndFilesystem(const path& relativePath,
     ext_symlink_last_write_time(topPath.value() / relativePath,mtime);
 }
 
-DirectoryNode *DirectoryTree::searchNode(const path& p)
+DirectoryNode& DirectoryTree::searchNode(const path& p, const string& where)
 {
     auto it=index.find(p);
-    if(it==index.end()) return nullptr;
-    return it->second;
+    if(it==index.end())
+    {
+        string message="DirectoryTree::searchNode could not find the path ";
+        message+=p.string();
+        if(where.empty()==false) message+=". Called from "+where;
+        throw runtime_error(message);
+    }
+    return *it->second;
 }
 
 void DirectoryTree::fixupParentMtime(const path& parent)
 {
     if(parent.empty()) return;
     //If file is in a subdirectory, fixup mtime of parent directory
-    auto it=index.find(parent.string());
-    assert(it!=index.end());
     ext_symlink_last_write_time(topPath.value() / parent,
-                                it->second->getElement().mtime());
+                                searchNode(parent).getElement().mtime());
 }
 
 void DirectoryTree::recursiveBuildFromPath(const path& p)
@@ -645,37 +642,30 @@ void DirectoryTree::recursiveWrite(const list<DirectoryNode>& nodes) const
 DirectoryTree::CopyResult DirectoryTree::treeCopy(const DirectoryTree& srcTree,
     const path& relativeSrcPath, const path& relativeDstPath)
 {
-    const auto *src=srcTree.searchNode(relativeSrcPath);
-    if(src==nullptr)
-        throw runtime_error(string("DirectoryTree::copy: can't find src: ")
-            +relativeSrcPath.string());
-
+    const auto& src=srcTree.searchNode(relativeSrcPath,"treeCopy: can't find src");
     if(relativeDstPath.empty()==false)
     {
-        auto *dst=this->searchNode(relativeDstPath);
-        if(dst==nullptr)
-            throw runtime_error(string("DirectoryTree::copy: can't find dst: ")
+        auto& dst=this->searchNode(relativeDstPath,"treeCopy: can't find dst");
+        if(dst.getElement().isDirectory()==false)
+            throw runtime_error(string("treeCopy: dst not a directory: ")
                 +relativeDstPath.string());
-        if(dst->getElement().isDirectory()==false)
-            throw runtime_error(string("DirectoryTree::copy: dst not a directory: ")
-                +relativeDstPath.string());
-        auto& newNode=dst->addToDirectoryContent(*src);
+        auto& newNode=dst.addToDirectoryContent(src);
         recursiveAddToIndex(newNode);
-        return CopyResult(*src,newNode);
+        return CopyResult(src,newNode);
     } else {
-        auto& e=src->getElement();
+        auto& e=src.getElement();
         path name=e.relativePath().filename();
         assert(name.empty()==false);
         for(auto& n : topContent) assert(n.getElement().relativePath()!=name);
         // Assign to the copied node the source element with fixed path
         DirectoryNode newNode(FilesystemElement(e,name));
-        for(auto& n : src->getDirectoryContent())
+        for(auto& n : src.getDirectoryContent())
             newNode.addToDirectoryContent(n);
         topContent.push_back(std::move(newNode));
         auto& result=topContent.back();
         topContent.sort(); // Keep topContent sorted
         recursiveAddToIndex(result);
-        return CopyResult(*src,result);
+        return CopyResult(src,result);
     }
 }
 
@@ -703,9 +693,8 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
             {
                 path p=e.relativePath() /
                     contentSrc.getElement().relativePath().filename();
-                auto *contentDst=this->searchNode(p);
-                assert(contentDst!=nullptr);
-                recursiveFilesystemCopy(srcTopPath,CopyResult(contentSrc,*contentDst));
+                auto& contentDst=this->searchNode(p);
+                recursiveFilesystemCopy(srcTopPath,CopyResult(contentSrc,contentDst));
             }
             permissions(dstPathAbs,e.permissions());
             break;

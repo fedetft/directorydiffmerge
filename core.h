@@ -470,9 +470,13 @@ public:
 
     /**
      * \param p relative path to search
-     * \return the corresponding DirectoryNode if found, nullptr otherwise
+     * \param where an optional string that is added to the exception that is
+     * thrown if the path is not found, used to print more informative messages
+     * \return the corresponding DirectoryNode
+     * \throws runtime_error if the path is not found
      */
-    const DirectoryNode *searchNode(const std::filesystem::path& p) const;
+    const DirectoryNode& searchNode(const std::filesystem::path& p,
+                                    const std::string& where="") const;
 
     /**
      * Copy part of another directoryTree into this tree.
@@ -631,7 +635,8 @@ public:
 
 private:
     // This version of searchNode that returns a non-const pointer is private
-    DirectoryNode *searchNode(const std::filesystem::path& p);
+    DirectoryNode& searchNode(const std::filesystem::path& p,
+                              const std::string& where="");
 
     void fixupParentMtime(const std::filesystem::path& parent);
 
