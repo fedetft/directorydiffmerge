@@ -111,7 +111,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
             } else {
                 cout<<"An entry was found in the source directory however, its "
                     <<"properties\n"<<item.value()<<"\ndo not match the missing "
-                    <<type<<"\n";
+                    <<type<<".\n";
                 CompareOpt opt;
                 opt.perm=false;
                 opt.owner=false;
@@ -145,12 +145,10 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                         return FixupResult::SuccessDiffMetadataInvalidated;
                     return FixupResult::SuccessMetadataInvalidated;
                 } else {
-                    cout<<"And the difference could result in data loss. Do you "
-                        <<"want me to DELETE the "<<type<<" in the backup and "
-                        <<"REPLACE it with the "<<item.value().typeAsString()
-                        <<" present in the source directory? [y/n]\n";
-                    if(askYesNo()==false) return FixupResult::Failed;
-                    dstTree.removeFromTreeAndFilesystem(relpath);
+                    cout<<"And the difference is not limited to metadata. "
+                        <<"However, as the entry in the backup is gone, and "
+                        <<"the source directory has changed, the best I can "
+                        <<"do is copy the new entry to the backup.\n";
                     dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,
                                                       relpath.parent_path());
                     meta1Tree.removeFromTree(relpath);
