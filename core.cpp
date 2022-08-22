@@ -534,6 +534,7 @@ void DirectoryTree::modifyPermissionsInTreeAndFilesystem(const path& relativePat
     checkTopPath("modifyPermissionsInTreeAndFilesystem");
     modifyPermissionsInTree(relativePath,perm);
     permissions(topPath.value() / relativePath,perm);
+    fixupParentMtime(relativePath.parent_path()); //TODO: is this really needed?
 }
 
 void DirectoryTree::modifyOwnerInTree(const path& relativePath,
@@ -549,6 +550,7 @@ void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
     checkTopPath("modifyUserInTreeAndFilesystem");
     modifyOwnerInTree(relativePath,user,group);
     ext_symlink_change_ownership(topPath.value() / relativePath,user,group);
+    fixupParentMtime(relativePath.parent_path()); //TODO: is this really needed?
 }
 
 void DirectoryTree::modifyMtimeInTree(const path& relativePath, time_t mtime)
