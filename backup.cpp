@@ -118,7 +118,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 opt.mtime=false;
                 if(compare(item.value(),d[1].value(),opt))
                 {
-                    cout<<"However, only metadata differ, updating backup.\n";
+                    cout<<"However, the content is the same, updating backup.\n";
                     dstTree.copyFromTreeAndFilesystem(*srcTree,relPath,
                                                       relPath.parent_path());
                     if(item.value().permissions()!=d[1].value().permissions())
@@ -145,7 +145,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                         return FixupResult::SuccessDiffMetadataInvalidated;
                     return FixupResult::SuccessMetadataInvalidated;
                 } else {
-                    cout<<"And the difference is not limited to metadata. "
+                    cout<<"And the difference includes the entry content. "
                         <<"However, as the entry in the backup is gone, and "
                         <<"the source directory has changed, the best I can "
                         <<"do is copy the new entry to the backup.\n";
@@ -186,7 +186,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
         opt.mtime=false;
         if(compare(d[0].value(),d[1].value(),opt))
         {
-            cout<<"However, only metadata differ, updating backup directory.\n";
+            cout<<"However, the content is the same, updating backup directory.\n";
             if(d[0].value().permissions()!=d[1].value().permissions())
             {
                 auto perm=d[1].value().permissions();
@@ -206,7 +206,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
             }
             return FixupResult::Success;
         } else {
-            cout<<"And the difference is not limited to metadata.\n";
+            cout<<"And the difference includes the entry content.\n";
             if(ty!=d[0].value().type())
                 cout<<yellowb<<"Also, the types differ!"<<reset<<"\n";
 
@@ -288,23 +288,20 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                     if(item.value()==d[0].value())
                     {
                         cout<<"But the source directory matches with the backup "
-                            <<"directory.\n";
-                        if(bitrot)
-                        {
-                            cout<<"I am really too confused about what's happening: "
-                                <<"on one hand your source and backup directory "
-                                <<"appear to match, but then also your two metadata "
-                                <<"files match and there may be bit rot involved.\n"
-                                <<"Giving up not to make the situation worse.\n";
-                            return FixupResult::Failed;
-                        }
-                        cout<<"Did you do a backup without updating the backup "
-                            <<"metadata? Assuming the metadata is not up to date.\n";
+                            <<"directory.\nDid you do a backup without updating "
+                            <<"the backup metadata? Assuming the metadata is not "
+                            <<"up to date.\n";
                         meta1Tree.removeFromTree(relPath);
                         meta1Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
                         meta2Tree.removeFromTree(relPath);
                         meta2Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
                         cout<<"Metadata updated to reflect the source and backup.\n";
+                        if(bitrot)
+                            cout<<yellowb<<"About the bit rot."<<reset
+                                <<"Either you restored a backup and that explains "
+                                <<"why the source and backup directory are the same "
+                                <<"and in this case you overwrote the good file, "
+                                <<"or something strange happened to the mtime.\n";
                         if(item.value().isDirectory() || ty==file_type::directory)
                             return FixupResult::SuccessDiffMetadataInvalidated;
                         return FixupResult::SuccessMetadataInvalidated;
@@ -316,15 +313,13 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                     opt.perm=false;
                     opt.owner=false;
                     opt.mtime=false;
-                    if(compare(item.value(),d[1].value(),opt))
+                    if(compare(item.value(),d[0].value(),opt))
                     {
-                        cout<<"However, only metadata differ, updating backup.\n";
+                        cout<<"However, the content is the same, updating backup.\n";
                         if(item.value().permissions()!=d[1].value().permissions())
                         {
                             auto perm=item.value().permissions();
                             dstTree.modifyPermissionsInTreeAndFilesystem(relPath,perm);
-                            meta1Tree.modifyPermissionsInTree(relPath,perm);
-                            meta2Tree.modifyPermissionsInTree(relPath,perm);
                         }
                         if(item.value().user()!=d[1].value().user() ||
                         item.value().group()!=d[1].value().group())
@@ -332,21 +327,31 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                             auto u=item.value().user();
                             auto g=item.value().group();
                             dstTree.modifyOwnerInTreeAndFilesystem(relPath,u,g);
-                            meta1Tree.modifyOwnerInTree(relPath,u,g);
-                            meta2Tree.modifyOwnerInTree(relPath,u,g);
                         }
                         if(item.value().mtime()!=d[1].value().mtime())
                         {
                             auto mtime=item.value().mtime();
                             dstTree.modifyMtimeInTreeAndFilesystem(relPath,mtime);
-                            meta1Tree.modifyMtimeInTree(relPath,mtime);
-                            meta2Tree.modifyMtimeInTree(relPath,mtime);
                         }
+                        //in this case src and backup directories differ only in
+                        // metadata, but metadata files differ in content!
+                        cout<<"Updating metadata files too.\n";
+                        meta1Tree.removeFromTree(relPath);
+                        meta1Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                        meta2Tree.removeFromTree(relPath);
+                        meta2Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                        if(bitrot)
+                            cout<<yellowb<<"About the bit rot."<<reset
+                                <<"Either you restored a backup and that explains "
+                                <<"why the source and backup directory are the same "
+                                <<"and in this case you overwrote the good file, "
+                                <<"or something strange happened to the mtime.\n";
                         if(ty==file_type::directory || d[0].value().isDirectory())
                             return FixupResult::SuccessDiffMetadataInvalidated;
                         return FixupResult::SuccessMetadataInvalidated;
                     } else {
-                        cout<<"Do you want to DELETE the "<<d[0].value().typeAsString()
+                        cout<<"And the difference includes the entry content.\n"
+                            <<"Do you want to DELETE the "<<d[0].value().typeAsString()
                             <<" in the backup directory and REPLACE it with the "
                             <<item.value().typeAsString()<<" in the source "
                             <<"directory? [y/n]\n";
