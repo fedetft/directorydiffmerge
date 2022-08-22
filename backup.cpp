@@ -64,10 +64,10 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
     assert(d[1]==d[2]);
     if(!d[0])
     {
-        path relpath=d[1].value().relativePath();
+        path relPath=d[1].value().relativePath();
         string type=d[1].value().typeAsString();
         file_type ty=d[1].value().type();
-        cout<<"The "<<type<<" is missing in the backup directory "
+        cout<<"The "<<type<<" "<<relPath<<" is missing in the backup directory "
             <<"but the metadata files agree it should be there.\n";
         //Symlinks are special, as the metadata file contains enough information
         //(the link target) to recreate them
@@ -87,7 +87,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
         } else {
             cout<<"Trying to see if I can find the missing "<<type<<" in the "
                 <<"source directory.\n";
-            auto item=srcTree->search(relpath);
+            auto item=srcTree->search(relPath);
             if(item.has_value()==false)
             {
                 cout<<"The "<<type<<" was not found. There's nothing I can do, "
@@ -105,7 +105,7 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 cout<<"The "<<type<<" was found in the source directory and "
                     <<"matches with the backup metadata.\n"
                     <<"Copying it back into the backup directory.\n";
-                dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,relpath.parent_path());
+                dstTree.copyFromTreeAndFilesystem(*srcTree,relPath,relPath.parent_path());
                 return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
                                                 : FixupResult::Success;
             } else {
@@ -119,27 +119,27 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 if(compare(item.value(),d[1].value(),opt))
                 {
                     cout<<"However, only metadata differ, updating backup.\n";
-                    dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,
-                                                      relpath.parent_path());
+                    dstTree.copyFromTreeAndFilesystem(*srcTree,relPath,
+                                                      relPath.parent_path());
                     if(item.value().permissions()!=d[1].value().permissions())
                     {
                         auto perm=item.value().permissions();
-                        meta1Tree.modifyPermissionsInTree(relpath,perm);
-                        meta2Tree.modifyPermissionsInTree(relpath,perm);
+                        meta1Tree.modifyPermissionsInTree(relPath,perm);
+                        meta2Tree.modifyPermissionsInTree(relPath,perm);
                     }
                     if(item.value().user()!=d[1].value().user() ||
                        item.value().group()!=d[1].value().group())
                     {
                         auto u=item.value().user();
                         auto g=item.value().group();
-                        meta1Tree.modifyOwnerInTree(relpath,u,g);
-                        meta2Tree.modifyOwnerInTree(relpath,u,g);
+                        meta1Tree.modifyOwnerInTree(relPath,u,g);
+                        meta2Tree.modifyOwnerInTree(relPath,u,g);
                     }
                     if(item.value().mtime()!=d[1].value().mtime())
                     {
                         auto mtime=item.value().mtime();
-                        meta1Tree.modifyMtimeInTree(relpath,mtime);
-                        meta2Tree.modifyMtimeInTree(relpath,mtime);
+                        meta1Tree.modifyMtimeInTree(relPath,mtime);
+                        meta2Tree.modifyMtimeInTree(relPath,mtime);
                     }
                     if(ty==file_type::directory)
                         return FixupResult::SuccessDiffMetadataInvalidated;
@@ -149,12 +149,12 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                         <<"However, as the entry in the backup is gone, and "
                         <<"the source directory has changed, the best I can "
                         <<"do is copy the new entry to the backup.\n";
-                    dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,
-                                                      relpath.parent_path());
-                    meta1Tree.removeFromTree(relpath);
-                    meta1Tree.copyFromTree(*srcTree,relpath,relpath.parent_path());
-                    meta2Tree.removeFromTree(relpath);
-                    meta2Tree.copyFromTree(*srcTree,relpath,relpath.parent_path());
+                    dstTree.copyFromTreeAndFilesystem(*srcTree,relPath,
+                                                      relPath.parent_path());
+                    meta1Tree.removeFromTree(relPath);
+                    meta1Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                    meta2Tree.removeFromTree(relPath);
+                    meta2Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
                     if(item.value().isDirectory() || d[1].value().isDirectory())
                         return FixupResult::SuccessDiffMetadataInvalidated;
                     return FixupResult::SuccessMetadataInvalidated;
@@ -162,24 +162,213 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
             }
         }
     } else if(!d[1]) {
-        file_type ty=d[0].value().type();
+        path relPath=d[0].value().relativePath();
         string type=d[0].value().typeAsString();
-        path removePath=d[0].value().relativePath();
-        cout<<"The "<<type<<" "<<removePath<<" is present in the backup "
+        file_type ty=d[0].value().type();
+        cout<<"The "<<type<<" "<<relPath<<" is present in the backup "
             <<"directory but the metadata files agree it should not be there.\n"
             <<"Do you want to DELETE it? [y/n]\n";
         if(askYesNo()==false) return FixupResult::Failed;
         cout<<"Removing the "<<type<<".\n";
-        int cnt=dstTree.removeFromTreeAndFilesystem(removePath);
+        int cnt=dstTree.removeFromTreeAndFilesystem(relPath);
         cout<<"Removed "<<cnt<<" files or directories.\n";
         return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
                                         : FixupResult::Success;
     } else {
-        //TODO: look into exactly what differs, if the difference
-        //is in the metadata, such as mtime or perms can be fixed
-        //TODO: could try to see if source dir is consistent with
-        //metadata files and copy file from source dir to backup dir
-        //TODO: if it's a directory?
+        path relPath=d[1].value().relativePath();
+        string type=d[1].value().typeAsString();
+        file_type ty=d[1].value().type();
+        cout<<"The metadata files agree on the properties of the "<<type<<" "
+            <<relPath<<" but the entry in the backup directory differs.\n";
+        CompareOpt opt;
+        opt.perm=false;
+        opt.owner=false;
+        opt.mtime=false;
+        if(compare(d[0].value(),d[1].value(),opt))
+        {
+            cout<<"However, only metadata differ, updating backup directory.\n";
+            if(d[0].value().permissions()!=d[1].value().permissions())
+            {
+                auto perm=d[1].value().permissions();
+                dstTree.modifyPermissionsInTreeAndFilesystem(relPath,perm);
+            }
+            if(d[0].value().user()!=d[1].value().user() ||
+               d[0].value().group()!=d[1].value().group())
+            {
+                auto u=d[1].value().user();
+                auto g=d[1].value().group();
+                dstTree.modifyOwnerInTreeAndFilesystem(relPath,u,g);
+            }
+            if(d[0].value().mtime()!=d[1].value().mtime())
+            {
+                auto mtime=d[1].value().mtime();
+                dstTree.modifyMtimeInTreeAndFilesystem(relPath,mtime);
+            }
+            return FixupResult::Success;
+        } else {
+            cout<<"And the difference is not limited to metadata.\n";
+            if(ty!=d[0].value().type())
+                cout<<yellowb<<"Also, the types differ!"<<reset<<"\n";
+
+            bool bitrot=false;
+            CompareOpt opt;
+            opt.size=false;
+            opt.hash=false;
+            opt.symlink=false;
+            if(compare(d[0].value(),d[1].value(),opt))
+            {
+                bitrot=true;
+                cout<<redb<<"Bit rot in the backup directory detected."
+                    <<reset<<" The content of a file changed but the modified "
+                    <<"time did not. I suggest running a SMART check as your "
+                    <<"backup disk may be unreliable.\n";
+            }
+
+            //Symlinks are special, as the metadata file contains enough
+            //information (the link target) to recreate them
+            if(ty==file_type::symlink && d[0].value().type()==file_type::symlink)
+            {
+                if(bitrot==false)
+                {
+                    cout<<"Do you want to UPDATE the symbolic link? [y/n]\n";
+                    if(askYesNo()==false) return FixupResult::Failed;
+                }
+                cout<<"First removing the old symbolic link.\n";
+                int cnt=dstTree.removeFromTreeAndFilesystem(relPath);
+                cout<<"Removed "<<cnt<<" entry. Creating updated symbolic link.\n";
+                dstTree.addSymlinkToTreeAndFilesystem(d[1].value());
+                return FixupResult::Success;
+            }
+            //Handling regular files and directories
+            if(srcTree==nullptr)
+            {
+                cout<<"If you re-run the scrub giving me also the source directory "
+                    <<"(-s option) I may be able to help by looking for the "<<type
+                    <<" there, but until then, there's nothing I can do.\n";
+                return FixupResult::Failed;
+            } else {
+                cout<<"Trying to see if I can find the missing "<<type<<" in the "
+                    <<"source directory.\n";
+                auto item=srcTree->search(relPath);
+                if(item.has_value()==false)
+                {
+                    cout<<"The "<<type<<" was not found. There's nothing I can do, "
+                        <<"but I recommend to double check the source directory "
+                        <<"path. If it's wrong, please re-run the command with the "
+                        <<"correct path. If it's correct, please check the source "
+                        <<"directory manually, if the "<<type<<" really isn't there "
+                        <<"maybe it was deleted manually both there and in the "
+                        <<"backup directory. If this is the only error you could "
+                        <<"delete and recreate the metadata files.\n";
+                    return FixupResult::Failed;
+                }
+                if(item.value()==d[1].value())
+                {
+                    cout<<"The "<<type<<" was found in the source directory and "
+                        <<"matches with the backup metadata.\n";
+                    if(bitrot==false)
+                    {
+                        cout<<"Do you want to DELETE the "<<d[0].value().typeAsString()
+                            <<" in the backup directory and REPLACE it with the "
+                            <<type<<" in the source directory? [y/n]\n";
+                        if(askYesNo()==false) return FixupResult::Failed;
+                    }
+                    int cnt=dstTree.removeFromTreeAndFilesystem(relPath);
+                    cout<<"Removed "<<cnt<<" files or directories.\nReplacing "
+                        <<"the content of the backup directory with the one of "
+                        <<"the source directory.\n";
+                    dstTree.copyFromTreeAndFilesystem(*srcTree,relPath,relPath.parent_path());
+                    if(ty==file_type::directory || d[0].value().isDirectory())
+                        return FixupResult::SuccessDiffInvalidated;
+                    return FixupResult::Success;
+                } else {
+                    cout<<"An entry was found in the source directory however, its "
+                        <<"properties\n"<<item.value()<<"\ndo not match the missing "
+                        <<type<<".\n";
+                    if(item.value()==d[0].value())
+                    {
+                        cout<<"But the source directory matches with the backup "
+                            <<"directory.\n";
+                        if(bitrot)
+                        {
+                            cout<<"I am really too confused about what's happening: "
+                                <<"on one hand your source and backup directory "
+                                <<"appear to match, but then also your two metadata "
+                                <<"files match and there may be bit rot involved.\n"
+                                <<"Giving up not to make the situation worse.\n";
+                            return FixupResult::Failed;
+                        }
+                        cout<<"Did you do a backup without updating the backup "
+                            <<"metadata? Assuming the metadata is not up to date.\n";
+                        meta1Tree.removeFromTree(relPath);
+                        meta1Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                        meta2Tree.removeFromTree(relPath);
+                        meta2Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                        cout<<"Metadata updated to reflect the source and backup.\n";
+                        if(item.value().isDirectory() || ty==file_type::directory)
+                            return FixupResult::SuccessDiffMetadataInvalidated;
+                        return FixupResult::SuccessMetadataInvalidated;
+                    } else {
+                        if(item.value().type()!=d[1].value().type())
+                            cout<<yellowb<<"Also, the types differ!"<<reset<<"\n";
+                    }
+                    CompareOpt opt;
+                    opt.perm=false;
+                    opt.owner=false;
+                    opt.mtime=false;
+                    if(compare(item.value(),d[1].value(),opt))
+                    {
+                        cout<<"However, only metadata differ, updating backup.\n";
+                        if(item.value().permissions()!=d[1].value().permissions())
+                        {
+                            auto perm=item.value().permissions();
+                            dstTree.modifyPermissionsInTreeAndFilesystem(relPath,perm);
+                            meta1Tree.modifyPermissionsInTree(relPath,perm);
+                            meta2Tree.modifyPermissionsInTree(relPath,perm);
+                        }
+                        if(item.value().user()!=d[1].value().user() ||
+                        item.value().group()!=d[1].value().group())
+                        {
+                            auto u=item.value().user();
+                            auto g=item.value().group();
+                            dstTree.modifyOwnerInTreeAndFilesystem(relPath,u,g);
+                            meta1Tree.modifyOwnerInTree(relPath,u,g);
+                            meta2Tree.modifyOwnerInTree(relPath,u,g);
+                        }
+                        if(item.value().mtime()!=d[1].value().mtime())
+                        {
+                            auto mtime=item.value().mtime();
+                            dstTree.modifyMtimeInTreeAndFilesystem(relPath,mtime);
+                            meta1Tree.modifyMtimeInTree(relPath,mtime);
+                            meta2Tree.modifyMtimeInTree(relPath,mtime);
+                        }
+                        if(ty==file_type::directory || d[0].value().isDirectory())
+                            return FixupResult::SuccessDiffMetadataInvalidated;
+                        return FixupResult::SuccessMetadataInvalidated;
+                    } else {
+                        cout<<"Do you want to DELETE the "<<d[0].value().typeAsString()
+                            <<" in the backup directory and REPLACE it with the "
+                            <<item.value().typeAsString()<<" in the source "
+                            <<"directory? [y/n]\n";
+                        if(askYesNo()==false) return FixupResult::Failed;
+                        int cnt=dstTree.removeFromTreeAndFilesystem(relPath);
+                        cout<<"Removed "<<cnt<<" files or directories.\nReplacing "
+                            <<"the content of the backup directory with the one of "
+                            <<"the source directory.\n";
+                        dstTree.copyFromTreeAndFilesystem(*srcTree,relPath,
+                                                        relPath.parent_path());
+                        meta1Tree.removeFromTree(relPath);
+                        meta1Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                        meta2Tree.removeFromTree(relPath);
+                        meta2Tree.copyFromTree(*srcTree,relPath,relPath.parent_path());
+                        if(ty==file_type::directory || item.value().isDirectory()
+                           || d[0].value().isDirectory())
+                            return FixupResult::SuccessDiffMetadataInvalidated;
+                        return FixupResult::SuccessMetadataInvalidated;
+                    }
+                }
+            }
+        }
     }
     return FixupResult::Failed;
 }
