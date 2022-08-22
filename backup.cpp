@@ -26,8 +26,21 @@ using namespace std::filesystem;
 
 enum class FixupResult
 {
-    Failed, Success, SuccessDiffInvalidated
+    Failed,
+    Success,
+    SuccessDiffInvalidated,
+    SuccessMetadataInvalidated,
+    SuccessDiffMetadataInvalidated
 };
+
+bool askYesNo()
+{
+    char c;
+    do {
+        c=tolower(cin.get());
+    } while(c!='y' && c!='n');
+    return c=='y';
+}
 
 /**
  * Try to fix an inconsistent backup state found during a scrub.
@@ -37,16 +50,21 @@ enum class FixupResult
  * \param srcTree freshly scanned metadata for src
  * NOTE: may be nullptr if source dir not given by the user
  * \param dstTree freshly scanned metadata for dst
+ * \param meta1Tree first metadata file loaded as tree
+ * \param meta2Tree first metadata file loaded as tree
  * \param diff diff line representing the inconsistent state to try fixing
  * \return fixup result
  */
 static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                                       DirectoryTree& dstTree,
+                                      DirectoryTree& meta1Tree,
+                                      DirectoryTree& meta2Tree,
                                       const DirectoryDiffLine<3>& d)
 {
     assert(d[1]==d[2]);
     if(!d[0])
     {
+        path relpath=d[1].value().relativePath();
         string type=d[1].value().typeAsString();
         file_type ty=d[1].value().type();
         cout<<"The "<<type<<" is missing in the backup directory "
@@ -63,13 +81,13 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
         if(srcTree==nullptr)
         {
             cout<<"If you re-run the scrub giving me also the source directory "
-                <<"I may be able to help by looking for the "<<type<<" there, "
-                <<"but until then, there's nothing I can do.\n";
+                <<"(-s option) I may be able to help by looking for the "<<type
+                <<" there, but until then, there's nothing I can do.\n";
             return FixupResult::Failed;
         } else {
             cout<<"Trying to see if I can find the missing "<<type<<" in the "
                 <<"source directory.\n";
-            auto item=srcTree->search(d[1].value().relativePath());
+            auto item=srcTree->search(relpath);
             if(item.has_value()==false)
             {
                 cout<<"The "<<type<<" was not found. There's nothing I can do, "
@@ -87,18 +105,62 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
                 cout<<"The "<<type<<" was found in the source directory and "
                     <<"matches with the backup metadata.\n"
                     <<"Copying it back into the backup directory.\n";
-                dstTree.copyFromTreeAndFilesystem(*srcTree,
-                    d[1].value().relativePath(),
-                    d[1].value().relativePath().parent_path());
+                dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,relpath.parent_path());
                 return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
                                                 : FixupResult::Success;
             } else {
-                //TODO: look into exactly what differs, if the difference
-                //is in the metadata, such as mtime or perms can be fixed
                 cout<<"Something was found in the source directory however, its "
                     <<"properties\n"<<item.value()<<" do not match the missing "
-                    <<type<<". At this point there's nothing I can do.\n";
-                return FixupResult::Failed;
+                    <<type<<"\n";
+                CompareOpt opt;
+                opt.perm=false;
+                opt.owner=false;
+                opt.mtime=false;
+                if(compare(item.value(),d[1].value(),opt))
+                {
+                    cout<<"However, only metadata differ, updating backup\n";
+                    dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,
+                                                      relpath.parent_path());
+                    if(item.value().permissions()!=d[1].value().permissions())
+                    {
+                        auto perm=item.value().permissions();
+                        meta1Tree.modifyPermissionsInTree(relpath,perm);
+                        meta2Tree.modifyPermissionsInTree(relpath,perm);
+                    }
+                    if(item.value().user()!=d[1].value().user() ||
+                       item.value().group()!=d[1].value().group())
+                    {
+                        auto u=item.value().user();
+                        auto g=item.value().group();
+                        meta1Tree.modifyOwnerInTree(relpath,u,g);
+                        meta2Tree.modifyOwnerInTree(relpath,u,g);
+                    }
+                    if(item.value().mtime()!=d[1].value().mtime())
+                    {
+                        auto mtime=item.value().mtime();
+                        meta1Tree.modifyMtimeInTree(relpath,mtime);
+                        meta2Tree.modifyMtimeInTree(relpath,mtime);
+                    }
+                    if(ty==file_type::directory)
+                        return FixupResult::SuccessDiffMetadataInvalidated;
+                    return FixupResult::SuccessMetadataInvalidated;
+                } else {
+                    cout<<"And the difference could result in data loss. Do you "
+                        <<"want me to DELETE the "<<type<<" in the backup and "
+                        <<"REPLACE it with the "<<item.value().typeAsString()
+                        <<" present in the source directory? [y/n]\n";
+                    if(askYesNo()==false) return FixupResult::Failed;
+                    dstTree.removeFromTreeAndFilesystem(relpath);
+                    dstTree.copyFromTreeAndFilesystem(*srcTree,relpath,
+                                                      relpath.parent_path());
+                    meta1Tree.removeFromTree(relpath);
+                    meta1Tree.copyFromTree(*srcTree,relpath,relpath.parent_path());
+                    meta2Tree.removeFromTree(relpath);
+                    meta2Tree.copyFromTree(*srcTree,relpath,relpath.parent_path());
+                    if(item.value().isDirectory() || d[1].value().isDirectory())
+                        return FixupResult::SuccessDiffMetadataInvalidated;
+                    return FixupResult::SuccessMetadataInvalidated;
+                }
             }
         }
     } else if(!d[1]) {
@@ -107,7 +169,9 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
         path removePath=d[0].value().relativePath();
         cout<<"The "<<type<<" "<<removePath<<" is present in the backup "
             <<"directory but the metadata files agree it should not be there.\n"
-            <<"Removing the "<<type<<".\n";
+            <<"Do you want to DELETE it? [y/n]\n";
+        if(askYesNo()==false) return FixupResult::Failed;
+        cout<<"Removing the "<<type<<".\n";
         int cnt=dstTree.removeFromTreeAndFilesystem(removePath);
         cout<<"Removed "<<cnt<<" files or directories.\n";
         return ty==file_type::directory ? FixupResult::SuccessDiffInvalidated
@@ -187,9 +251,11 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
             if(d[0]==d[1] && d[0]!=d[2])
             {
                 cout<<d<<"Assuming metadata file 2 inconsistent in this case.\n";
+                //TODO: may want to edit the meta1 tree immediately, due to redo
                 updateMeta2=true;
             } else if(d[0]==d[2] && d[0]!=d[1]) {
                 cout<<d<<"Assuming metadata file 1 inconsistent in this case.\n";
+                //TODO: may want to edit the meta1 tree immediately, due to redo
                 updateMeta1=true;
             } else if(d[1]==d[2] && d[0]!=d[1]) {
                 cout<<d<<"Metadata files are consistent between themselves "
@@ -197,13 +263,25 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
                 if(fixup)
                 {
                     cout<<"Trying to fix this.\n";
-                    auto result=tryToFixBackupFile(srcTree,dstTree,d);
-                    if(result==FixupResult::Failed) unrecoverable=true;
-                    else if(result==FixupResult::SuccessDiffInvalidated)
+                    auto result=tryToFixBackupFile(srcTree,dstTree,meta1Tree,meta2Tree,d);
+                    switch(result)
                     {
-                        redo=true;
-                        break;
+                        case FixupResult::Success:
+                            break;
+                        case FixupResult::Failed:
+                            unrecoverable=true;
+                            break;
+                        case FixupResult::SuccessDiffInvalidated:
+                            redo=true;
+                            break;
+                        case FixupResult::SuccessMetadataInvalidated:
+                            updateMeta1=updateMeta2=true;
+                            break;
+                        case FixupResult::SuccessDiffMetadataInvalidated:
+                            updateMeta1=updateMeta2=redo=true;
+                            break;
                     }
+                    if(redo) break;
                 } else {
                     cout<<"Not attempting to fix this because --fixup option "
                         <<"not given.\n";
