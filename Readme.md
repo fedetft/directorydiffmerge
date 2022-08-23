@@ -10,11 +10,11 @@ a second copy of the data is the source directory itself, so if the single backu
 copy becomes corrupted, ddm can fix the backup by taking the corrupted files from
 the source directory.
 
-ddm implements bit rot detction forboth the source and backup directory. TODO: document me
+ddm implements bit rot detction for both the source and backup directory. TODO: document me
 
 ### Initializing the backup
 
-The first time you want to create a backup with ddm you need to create the backup directory. Assuming you have a backup directory `directory` in path `srcdir_path` and want to create the backup in `backup_path`, use the following commands.
+The first time you want to create a backup with ddm you need to create the backup directory. Assuming you have directory `directory` in path `srcdir_path` and want to create the backup in `backup_path`, use the following commands.
 
 ```
 cp -P -r --preserve=all srcdir_path/directory backup_path  # Copy the directory to backup
@@ -24,11 +24,13 @@ cp backup_path/metadata1.ddm backup_path/metadata2.ddm     # Create 2nd metadata
 
 ### Updating the backup
 
-Once the backup has been created, you can back up your source directory any time you want with the following command. The `--fixup` option is optional, if passed, ddm will try to fix the backup directory if problems arise. Note that the process may be interactiove, thus requiring user input.
+Once the backup has been created, you can back up your source directory any time you want with the following command.
 
 ```
 ddm backup --fixup -s srcdir_path/directory -t backup_path/directory backup_path/metadata1.ddm backup_path/metadata2.ddm
 ```
+
+The `--fixup` option is optional, if passed, ddm will try to fix the backup directory if problems arise. Note that the process may be interactiove, thus requiring user input.
 
 ### Scrubbing the backup
 
