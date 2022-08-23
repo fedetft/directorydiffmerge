@@ -440,7 +440,10 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
         cout<<"Done.\n";
     } catch(exception& e) {
         cout<<e.what()<<"\nIt looks like at least one of the metadata files is "
-            <<"corrupted to the point that it cannot be read.\n"
+            <<"corrupted to the point that it cannot be read. The cause may be "
+            <<"an unclean unmount of the filesystem (did you run an fsck?), "
+            <<"you tried to edit a metadata file with a text editor or "
+            <<"bit rot occurred in a metadata file.\n"
             <<redb<<"Unrecoverable inconsistencies found."<<reset<<" You will "
             <<"need to manually fix the backup directory, possibly by "
             <<"recreating metadata files and replacing the corrupted one(s).\n"
