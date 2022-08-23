@@ -55,11 +55,11 @@ bool askYesNo()
  * \param diff diff line representing the inconsistent state to try fixing
  * \return fixup result
  */
-static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
-                                      DirectoryTree& dstTree,
-                                      DirectoryTree& meta1Tree,
-                                      DirectoryTree& meta2Tree,
-                                      const DirectoryDiffLine<3>& d)
+static FixupResult tryToFixBackupEntry(const DirectoryTree *srcTree,
+                                       DirectoryTree& dstTree,
+                                       DirectoryTree& meta1Tree,
+                                       DirectoryTree& meta2Tree,
+                                       const DirectoryDiffLine<3>& d)
 {
     assert(d[1]==d[2]);
     if(!d[0])
@@ -379,6 +379,41 @@ static FixupResult tryToFixBackupFile(const DirectoryTree *srcTree,
 }
 
 /**
+ * Fix an inconsistent metadata state found during a scrub.
+ * This function only sees a single difference.
+ * \param goodTree good tree, used for copying the good entry if present
+ * \param badTree metadata tree to fix
+ * \param goodEntry diff entry representing the good filesystem state
+ * \param badEntry diff entry representing the bad filesystem state
+ * \return fixup result
+ */
+static FixupResult fixMetadataEntry(DirectoryTree& goodTree,
+                                    DirectoryTree& badTree,
+                                    const optional<FilesystemElement>& goodEntry,
+                                    const optional<FilesystemElement>& badEntry)
+{
+    //NOTE: this could be optimized to look into the actual difference, as for
+    //example if a directory differs only in the modifies time this code would
+    //remove the entire directory and recreate it. However, this code only
+    //works with an in-memory data structure and not with actual files and
+    //directories, so this inefficient implementation is not that slow, and
+    //optimizing it will make it as complicated as tryToFixBackupEntry
+    if(badEntry.has_value())
+        badTree.removeFromTree(badEntry.value().relativePath());
+
+    if(goodEntry.has_value())
+    {
+        path relPath=goodEntry.value().relativePath();
+        badTree.copyFromTree(goodTree,relPath,relPath.parent_path());
+    }
+
+    if((goodEntry.has_value() && goodEntry.value().isDirectory()) ||
+       (badEntry.has_value()  && badEntry.value().isDirectory()))
+        return FixupResult::SuccessDiffMetadataInvalidated;
+    return FixupResult::SuccessMetadataInvalidated;
+}
+
+/**
  * Implementation code that scrubs only the backup directory
  * \param srcTree freshly scanned metadata for src
  * NOTE: may be nullptr if source dir not given by the user
@@ -443,19 +478,29 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
             if(d[0]==d[1] && d[0]!=d[2])
             {
                 cout<<d<<"Assuming metadata file 2 inconsistent in this case.\n";
-                //TODO: may want to edit the meta1 tree immediately, due to redo
+                auto result=fixMetadataEntry(dstTree,meta2Tree,d[0],d[2]);
                 updateMeta2=true;
+                if(result==FixupResult::SuccessDiffMetadataInvalidated)
+                {
+                    redo=true;
+                    break;
+                }
             } else if(d[0]==d[2] && d[0]!=d[1]) {
                 cout<<d<<"Assuming metadata file 1 inconsistent in this case.\n";
-                //TODO: may want to edit the meta1 tree immediately, due to redo
+                auto result=fixMetadataEntry(dstTree,meta1Tree,d[0],d[1]);
                 updateMeta1=true;
+                if(result==FixupResult::SuccessDiffMetadataInvalidated)
+                {
+                    redo=true;
+                    break;
+                }
             } else if(d[1]==d[2] && d[0]!=d[1]) {
                 cout<<d<<"Metadata files are consistent between themselves "
                     <<"but differ from backup directory content.\n";
                 if(fixup)
                 {
                     cout<<"Trying to fix this.\n";
-                    auto result=tryToFixBackupFile(srcTree,dstTree,meta1Tree,meta2Tree,d);
+                    auto result=tryToFixBackupEntry(srcTree,dstTree,meta1Tree,meta2Tree,d);
                     switch(result)
                     {
                         case FixupResult::Success:
@@ -493,21 +538,19 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
     {
         if(updateMeta1)
         {
-            cout<<"Replacing metadata file 1 with current backup directory "
-                <<"metadata (previous version saved with .bak extension)\n";
+            cout<<"Updating metadata file 1\n";
             auto meta1bak=meta1;
             meta1bak+=".bak";
             rename(meta1,meta1bak);
-            dstTree.writeTo(meta1);
+            meta1Tree.writeTo(meta1);
         }
         if(updateMeta2)
         {
-            cout<<"Replacing metadata file 2 with current backup directory "
-                <<"metadata (previous version saved with .bak extension)\n";
+            cout<<"updating metadata file 2\n";
             auto meta2bak=meta2;
             meta2bak+=".bak";
             rename(meta2,meta2bak);
-            dstTree.writeTo(meta2);
+            meta2Tree.writeTo(meta2);
         }
         cout<<yellowb<<"Inconsitencies found"<<reset<<" but it was possible to "
             <<"automatically reconcile them.\nBackup directory is now good.\n";
