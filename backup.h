@@ -36,7 +36,7 @@ void scanSourceTargetDir(const std::filesystem::path& src,
                          DirectoryTree& dstTree);
 
 /**
- * Scrub only the backup directory
+ * Scrub the backup directory
  * \param dst destination (backup) directory path
  * \param meta1 first copy of the metadata for the destination directory
  * \param meta2 second copy of the metadata for the destination directory
@@ -53,14 +53,15 @@ int scrub(const std::filesystem::path& dst,
           std::function<void (const std::string&)> warningCallback={});
 
 /**
- * Scrub both the directory to be backed up and the backup directory
+ * Scrub the backup directory using the source directory to copy
+ * missing/corrupted files from.
  * \param src source directory path (directory to be backed up)
  * \param dst destination (backup) directory path
  * \param meta1 first copy of the metadata for the destination directory
  * \param meta2 second copy of the metadata for the destination directory
  * \param fixup if true, attempt to fix inconsistencies in the backup directory
- * \param warningCallback warning callback
  * \param threads if true, scan in parallel
+ * \param warningCallback warning callback
  * \return 0 if no action was needed,
  *         1 if recoverable errors found and fixed
  *         2 if unrecoverable errors found
@@ -71,3 +72,40 @@ int scrub(const std::filesystem::path& src,
           const std::filesystem::path& meta2,
           bool fixup, bool threads,
           std::function<void (const std::string&)> warningCallback={});
+
+/**
+ * Backup with bit rot detection support (requires two copies of metadata in
+ * the backup directory). Scrubs the backup directory first, and then proceeds
+ * with the backup.
+ * \param src source directory path (directory to be backed up)
+ * \param dst destination (backup) directory path
+ * \param meta1 first copy of the metadata for the destination directory
+ * \param meta2 second copy of the metadata for the destination directory
+ * \param fixup if true, attempt to fix inconsistencies in the backup directory
+ * \param threads if true, scan in parallel
+ * \param warningCallback warning callback
+ * \return 0 if no action was needed,
+ *         1 if recoverable errors found and fixed
+ *         2 if unrecoverable errors found
+ */
+int backup(const std::filesystem::path& src,
+           const std::filesystem::path& dst,
+           const std::filesystem::path& meta1,
+           const std::filesystem::path& meta2,
+           bool fixup, bool threads,
+           std::function<void (const std::string&)> warningCallback={});
+
+/**
+ * Simple backup with no bit rot detection support.
+ * \param src source directory path (directory to be backed up)
+ * \param dst destination (backup) directory path
+ * \param threads if true, scan in parallel
+ * \param warningCallback warning callback
+ * \return 0 if no action was needed,
+ *         1 if recoverable errors found and fixed
+ *         2 if unrecoverable errors found
+ */
+int backup(const std::filesystem::path& src,
+           const std::filesystem::path& dst,
+           bool threads,
+           std::function<void (const std::string&)> warningCallback={});

@@ -56,16 +56,14 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
 
 ddm scrub <dir> <met> <met>             # Check for bit rot, correct if possible
 ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
-                                        # also checks source dir
+                                        # using source dir to copy files from
 
 ddm backup -s <dir> -t <dir>                # Backup source dir to target dir
 ddm backup -s <dir> -t <dir> <met> <met>    # Backup and update bit rot copies
                                             # also performs scrub of backup
-ddm backup -s <dir> -t <dir> <met> <met> -n # Backup and update bit rot copies
-                                            # perform no scrub nor hash check
-
-ddm sync -s <d|m> -t <d|m> -o <dir> # ??? TODO
 )";
+// ddm sync -s <d|m> -t <d|m> -o <dir> # ??? TODO
+// )";
     exit(100);
 }
 
@@ -199,22 +197,26 @@ static int backupCmd(variables_map& vm, ostream& out)
     vector<path> inputs;
     if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
 
-    if(vm.count("help") || vm.count("source") || vm.count("target")
-    || inputs.size()<2 || inputs.size()>3)
+    if(vm.count("help") || vm.count("ignore") || vm.count("nohash") ||
+       !vm.count("source") || !vm.count("target") ||
+       (inputs.size()!=0 && inputs.size()!=2))
     {
-        cerr<<R"(ddm diff
+        cerr<<R"(ddm backup
 Usage:
 ddm backup -s <dir> -t <dir>                # Backup source dir to target dir
 ddm backup -s <dir> -t <dir> <met> <met>    # Backup and update bit rot copies
                                             # also performs scrub of backup
-ddm backup -s <dir> -t <dir> <met> <met> -n # Backup and update bit rot copies
-                                            # perform no scrub nor hash check
 )";
         return 100;
     }
 
-    //TODO
-    return 0;
+    if(inputs.size()==2)
+        return backup(vm["source"].as<path>(),vm["target"].as<path>(),
+                     inputs.at(0),inputs.at(1),vm.count("fixup"),
+                     !vm.count("singlethread"),printWarning);
+    else
+        return backup(vm["source"].as<path>(),vm["target"].as<path>(),
+                      !vm.count("singlethread"),printWarning);
 }
 
 int main(int argc, char *argv[]) try

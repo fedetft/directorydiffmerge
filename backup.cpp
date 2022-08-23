@@ -442,7 +442,9 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
         cout<<e.what()<<"\nIt looks like at least one of the metadata files is "
             <<"corrupted to the point that it cannot be read.\n"
             <<redb<<"Unrecoverable inconsistencies found."<<reset<<" You will "
-            <<"need to manually fix the backup directory.\n";
+            <<"need to manually fix the backup directory, possibly by "
+            <<"recreating metadata files and replacing the corrupted one(s).\n"
+            <<"the 'ddm diff' command may help to troubleshoot bad metadata.\n";
         return 2;
     }
 
@@ -452,7 +454,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
 
     if(diff.empty())
     {
-        cout<<greenb<<"All good."<<reset<<" No differences found.\n";
+        cout<<greenb<<"Scrub complete."<<reset<<" No differences found.\n";
         return 0;
     }
     cout<<yellowb<<"Inconsitencies found."<<reset
@@ -631,11 +633,170 @@ int scrub(const path& src, const path& dst, const path& meta1, const path& meta2
     cout<<"Scrubbing backup directory "<<dst<<"\n"
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
         <<"and with source directory "<<src<<"\n"
-        <<"Scanning backup directory... "; cout.flush();
+        <<"Scanning source and backup directory... "; cout.flush();
     DirectoryTree srcTree, dstTree;
     if(warningCallback) srcTree.setWarningCallback(warningCallback);
     if(warningCallback) dstTree.setWarningCallback(warningCallback);
     scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
     cout<<"Done.\n";
     return scrubImpl(&srcTree,dstTree,meta1,meta2,fixup,warningCallback);
+}
+
+/**
+ * TODO document me
+ */
+static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
+{
+    cout<<"Performing backup.\n"
+        <<"Comparing source directory with backup directory... "; cout.flush();
+    auto diff=diff2(srcTree,dstTree);
+    cout<<"Done.\n";
+
+    bool bitrot=false;
+    if(diff.empty()) cout<<"No differences found.\n";
+    for(auto& d : diff)
+    {
+        // NOTE: we're intentionally comparing the optional<FilesystemElement>
+        // and not the FilesystemElement as this covers also the cases where
+        // items are missing
+        if(!d[0])
+        {
+            path relPath=d[1].value().relativePath();
+            cout<<"- Removing "<<d[1].value().typeAsString()<<" "<<relPath
+                <<" from backup directory.\n";
+            dstTree.removeFromTreeAndFilesystem(relPath);
+        } else if(!d[1]) {
+            path relPath=d[0].value().relativePath();
+            cout<<"- Copying "<<d[0].value().typeAsString()<<" "<<relPath
+                <<" to backup directory.\n";
+            dstTree.copyFromTreeAndFilesystem(srcTree,relPath,relPath.parent_path());
+        } else {
+            path relPath=d[0].value().relativePath();
+            CompareOpt opt;
+            opt.perm=false;
+            opt.owner=false;
+            opt.mtime=false;
+            if(compare(d[0].value(),d[1].value(),opt))
+            {
+                cout<<"- Updating the metadata of the "
+                    <<d[0].value().typeAsString()<<" "<<relPath
+                    <<" in the backup directory.\n";
+                if(d[0].value().permissions()!=d[1].value().permissions())
+                {
+                    auto perm=d[0].value().permissions();
+                    dstTree.modifyPermissionsInTreeAndFilesystem(relPath,perm);
+                }
+                if(d[0].value().user()!=d[1].value().user() ||
+                    d[0].value().group()!=d[1].value().group())
+                {
+                    auto u=d[0].value().user();
+                    auto g=d[0].value().group();
+                    dstTree.modifyOwnerInTreeAndFilesystem(relPath,u,g);
+                }
+                if(d[0].value().mtime()!=d[1].value().mtime())
+                {
+                    auto mtime=d[0].value().mtime();
+                    dstTree.modifyMtimeInTreeAndFilesystem(relPath,mtime);
+                }
+            } else {
+                CompareOpt opt;
+                opt.size=false;
+                opt.hash=false;
+                opt.symlink=false;
+                if(compare(d[0].value(),d[1].value(),opt))
+                {
+                    bitrot=true;
+                    cout<<redb<<"Bit rot in the source directory detected."
+                        <<reset<<" The content of the "<<d[0].value().typeAsString()
+                        <<" "<<relPath<<" changed but the modified time did not.\n"
+                        <<"NOT backing up this "<<d[0].value().typeAsString()
+                        <<" as the backup copy may be good one.\n";
+                } else {
+                    bool replace=true;
+                    if(d[0].value().mtime()<d[1].value().mtime())
+                    {
+                        cout<<d<<"The "<<d[1].value().typeAsString()<<" "
+                            <<relPath<<" in the backup directory is newer than "
+                            <<"the "<<d[0].value().typeAsString()<<" in the "
+                            <<"source directory, (did you write something "
+                            <<"directly in the backup directory?)\nDo you want "
+                            <<"me to DELETE the backup entry and REPLACE it "
+                            <<"with the entry in the source directory? [y/n]\n";
+                        if(askYesNo()==false)
+                        {
+                            replace=false;
+                            cout<<yellowb<<"Leaving backup inconsistent."<<reset
+                                <<" Note that you have to solve this manually, "
+                                <<"and consider that the "
+                                <<d[0].value().typeAsString()<<" in the source "
+                                <<"directory is currently without a backup.\n";
+                        }
+                    }
+                    if(replace)
+                    {
+                        cout<<"- Replacing the "<<d[1].value().typeAsString()
+                            <<" "<<relPath<<" in the backup directory with the "
+                            <<d[0].value().typeAsString()<<" in the source directory.\n";
+                        dstTree.removeFromTreeAndFilesystem(relPath);
+                        dstTree.copyFromTreeAndFilesystem(srcTree,relPath,
+                                                          relPath.parent_path());
+                    }
+                }
+            }
+        }
+    }
+    if(bitrot)
+        cout<<redb<<"Bit rot was detected in the source directory."<<reset
+            <<" As this tool by design never writes into the source directory "
+            <<"during a backup, you will have to fix this manually. Review the "
+            <<"listed files, and if bit rot is confirmed, then manually replace "
+            <<"the rotten files in the source directory with the good copy in the "
+            <<"backup directory.\nI suggest also running a SMART check as your "
+            <<"source disk may be unreliable.\n";
+    else cout<<greenb<<"Backup complete."<<reset<<"\n";
+    return bitrot ? 2 : 0;
+}
+
+int backup(const path& src, const path& dst, const path& meta1, const path& meta2,
+           bool fixup, bool threads, function<void (const string&)> warningCallback)
+{
+    cout<<"Backing up directory "<<src<<"\nto directory "<<dst<<"\n"
+        <<"and metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
+        <<"Scanning source and backup directory... "; cout.flush();
+    DirectoryTree srcTree, dstTree;
+    if(warningCallback) srcTree.setWarningCallback(warningCallback);
+    if(warningCallback) dstTree.setWarningCallback(warningCallback);
+    scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
+    cout<<"Done.\nScrubbing backup directory.\n";
+    int result=scrubImpl(&srcTree,dstTree,meta1,meta2,fixup,warningCallback);
+    switch(result)
+    {
+        case 1:
+            cout<<"Do you want to continue with the backup? [y/n]\n";
+            if(askYesNo()==false) return result;
+            break;
+        case 2:
+            cout<<redb<<"Refusing to perform backup to an inconsistent directory."
+                <<reset<<"\n";
+            return result;
+    }
+    int result2=backupImpl(srcTree,dstTree);
+    if(result2!=0) result=result2;
+    cout<<"Updating metadata files.\n";
+    dstTree.writeTo(meta1);
+    dstTree.writeTo(meta2);
+    return result;
+}
+
+int backup(const path& src, const path& dst, bool threads,
+           function<void (const string&)> warningCallback)
+{
+    cout<<"Backing up directory "<<src<<"\nto directory "<<dst<<"\n"
+        <<"Scanning source and backup directory... "; cout.flush();
+    DirectoryTree srcTree, dstTree;
+    if(warningCallback) srcTree.setWarningCallback(warningCallback);
+    if(warningCallback) dstTree.setWarningCallback(warningCallback);
+    scanSourceTargetDir(src,dst,threads,ScanOpt::OmitHash,srcTree,dstTree);
+    cout<<"Done.\n";
+    return backupImpl(srcTree,dstTree);
 }
