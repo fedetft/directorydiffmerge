@@ -513,9 +513,9 @@ void DirectoryTree::addSymlinkToTreeAndFilesystem(const FilesystemElement& symli
     //Don't consider owner/group setting failure an error
     try {
         ext_symlink_change_ownership(absPath,symlink.user(),symlink.group());
-    } catch(exception& e) {
+    } catch(exception&) {
         warningCallback(string("Warning: could not change ownership of ")
-            +absPath.string()+": maybe retry with sudo? e="+e.what());
+            +absPath.string()+": maybe retry with sudo?");
     }
     //Fix mtime
     ext_symlink_last_write_time(absPath,symlink.mtime());
@@ -549,7 +549,14 @@ void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
 {
     checkTopPath("modifyUserInTreeAndFilesystem");
     modifyOwnerInTree(relativePath,user,group);
-    ext_symlink_change_ownership(topPath.value() / relativePath,user,group);
+    path absPath=topPath.value() / relativePath;
+    //Don't consider owner/group setting failure an error
+    try {
+        ext_symlink_change_ownership(absPath,user,group);
+    } catch(exception&) {
+        warningCallback(string("Warning: could not change ownership of ")
+            +absPath.string()+": maybe retry with sudo?");
+    }
     fixupParentMtime(relativePath.parent_path()); //TODO: is this really needed?
 }
 
@@ -710,7 +717,7 @@ void DirectoryTree::recursiveFilesystemCopy(const path& srcTopPath, CopyResult n
         ext_symlink_change_ownership(dstPathAbs,e.user(),e.group());
     } catch(exception& e) {
         warningCallback(string("Warning: could not change ownership of ")
-            +dstPathAbs.string()+": maybe retry with sudo? e="+e.what());
+            +dstPathAbs.string()+": maybe retry with sudo?");
     }
     //Fix mtime last, for directories it's important as recursive write would
     //alter mtime again
