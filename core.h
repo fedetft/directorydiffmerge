@@ -216,8 +216,16 @@ private:
     time_t mt=0;                   ///< Modified time
     off_t sz=0;                    ///< Size, only if regular file
     std::string fileHash;          ///< SHA1 hash, only if regular file
+#ifndef OPTIMIZE_MEMORY
     std::filesystem::path rp;      ///< File path relative to top level directory
     std::filesystem::path symlink; ///< Symlink target path, only if symlink
+#else //OPTIMIZE_MEMORY
+    // The path class occupies almost twice the size of a string, so store paths
+    // as strings to save memory but transparently convert them to paths on use.
+    // This saves memory at the cost of speed.
+    std::string rp;
+    std::string symlink;
+#endif //OPTIMIZE_MEMORY
 
     //Fields that are not written to metadata files
     uintmax_t hardLinkCnt=1;       ///< Number of hardlinks

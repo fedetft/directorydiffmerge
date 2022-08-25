@@ -70,7 +70,11 @@ FilesystemElement::FilesystemElement()
     : ty(file_type::unknown), per(perms::unknown) {}
 
 FilesystemElement::FilesystemElement(const path& p, const path& top, ScanOpt opt)
+#ifndef OPTIMIZE_MEMORY
     : rp(p.lexically_relative(top))
+#else //OPTIMIZE_MEMORY
+    : rp(p.lexically_relative(top).string())
+#endif //OPTIMIZE_MEMORY
 {
     auto s=ext_symlink_status(p);
     per=s.permissions();
@@ -88,7 +92,11 @@ FilesystemElement::FilesystemElement(const path& p, const path& top, ScanOpt opt
         case file_type::directory:
             break;
         case file_type::symlink:
+#ifndef OPTIMIZE_MEMORY
             symlink=read_symlink(p);
+#else //OPTIMIZE_MEMORY
+            symlink=read_symlink(p).string();
+#endif //OPTIMIZE_MEMORY
             break;
         default:
             ty=file_type::unknown; //We don't handle other types
@@ -99,7 +107,11 @@ FilesystemElement::FilesystemElement(const FilesystemElement& other,
                                      const path& relativePath)
 {
     *this=other;
+#ifndef OPTIMIZE_MEMORY
     this->rp=relativePath;
+#else //OPTIMIZE_MEMORY
+    this->rp=relativePath.string();
+#endif //OPTIMIZE_MEMORY
 }
 
 void FilesystemElement::readFrom(const string& metadataLine,
@@ -158,6 +170,9 @@ void FilesystemElement::readFrom(const string& metadataLine,
     tz.resize(6);
     in.read(tz.data(),6);
     if(!in || tz!=" +0000") fail("Error reading mtime");
+#ifdef OPTIMIZE_MEMORY
+    path temp;
+#endif //OPTIMIZE_MEMORY
     //Initialize type-dependent fields to default
     sz=0;
     fileHash.clear();
@@ -173,11 +188,21 @@ void FilesystemElement::readFrom(const string& metadataLine,
             else if(fileHash.size()!=40) fail("Error reading hash");
             break;
         case file_type::symlink:
+#ifndef OPTIMIZE_MEMORY
             in>>symlink;
+#else //OPTIMIZE_MEMORY
+            in>>temp;
+            symlink=temp.string();
+#endif //OPTIMIZE_MEMORY
             if(!in) fail("Error reading symlink target");
             break;
     }
+#ifndef OPTIMIZE_MEMORY
     in>>rp;
+#else //OPTIMIZE_MEMORY
+    in>>temp;
+    rp=temp.string();
+#endif //OPTIMIZE_MEMORY
     if(!in) fail("Error reading path");
     if(in.get()!=EOF) fail("Extra characters at end of line");
     //Initialize non-written fields to defaults
@@ -217,6 +242,9 @@ void FilesystemElement::writeTo(ostream& os) const
     auto ret=gmtime_r(&mt,&t);
     assert(ret==&t);
     os<<put_time(&t,"%F %T +0000")<<' ';
+#ifdef OPTIMIZE_MEMORY
+    path temp;
+#endif //OPTIMIZE_MEMORY
     switch(ty)
     {
         case file_type::regular:
@@ -225,10 +253,20 @@ void FilesystemElement::writeTo(ostream& os) const
             else os<<sz<<' '<<fileHash<<' ';
             break;
         case file_type::symlink:
+#ifndef OPTIMIZE_MEMORY
             os<<symlink<<' ';
+#else //OPTIMIZE_MEMORY
+            temp=symlink;
+            os<<temp<<' ';
+#endif //OPTIMIZE_MEMORY
             break;
     }
+#ifndef OPTIMIZE_MEMORY
     os<<rp;
+#else //OPTIMIZE_MEMORY
+    temp=rp;
+    os<<temp;
+#endif //OPTIMIZE_MEMORY
 }
 
 string FilesystemElement::typeAsString() const
