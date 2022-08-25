@@ -32,6 +32,8 @@ ddm backup --fixup -s srcdir_path/directory -t backup_path/directory backup_path
 
 DO NOT swap the source and backup directories! Remeber, `-s` stands for source directory, where ddm will READ, and `-t` stands for target directory, where ddm will WRITE.
 
+Also note that you SHOULD NOT MODIFY the content of the source directory while the backup is in progress.
+
 The `--fixup` option is optional, if passed, ddm will try to fix the backup directory if problems arise. Note that the process may be interactive, thus requiring user input.
 
 ### Scrubbing the backup
