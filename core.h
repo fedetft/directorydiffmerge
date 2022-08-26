@@ -179,6 +179,13 @@ public:
     off_t size() const { return sz; }
 
     /**
+     * If the FilesystemElement is a regular file and the hash computation was
+     * omitted, compute it now, otherwise do nothing
+     * \param top top level directory, used to compute absolute path
+     */
+    void computeHashIfNeeded(const std::filesystem::path& top);
+
+    /**
      * \return the file hash.
      * Only valid if the FilesystemElement is a regular file
      */
@@ -344,6 +351,13 @@ public:
      */
     void setMtime(time_t mtime) { elem.setMtime(mtime); }
 
+    /**
+     * If the node is a file with a missing hash, compute the hash, otherwise
+     * if it is a directory recursively comute all missing hashes
+     * \param top top level directory, used to compute absolute path
+     */
+    void computeMissingHashes(const std::filesystem::path& top);
+
 private:
     static DirectoryNode& recursiveAdd(DirectoryNode& dst, const DirectoryNode& src);
 
@@ -445,6 +459,30 @@ public:
      * \param os ostream where to write
      */
     void writeTo(std::ostream& os) const;
+
+    /**
+     * Used to assign a top path to a directory tree that was constructed from
+     * a metadata file. After binding a top path, the directory tree behaves
+     * as if it was constructed by scanning the top path.
+     * NOTE: no check is made that the directory tree reflects the content of
+     * the given top path! File operations may fail later if the tree and the
+     * filesystmem directory selected as top path differ.
+     * \param topPath top level directory where the directory tree starts
+     */
+    void bindToTopPath(const std::filesystem::path& topPath)
+    {
+        this->topPath=topPath;
+    }
+
+    /**
+     * Walk the entire directory tree and compute all missing hashes
+     * Only works if the tree was constructed by scanning a directory, not if
+     * it was constructed from a metadata file.
+     * \throws runtime_error if at least a file in the tree that requires hash
+     * computation is not found in the filesystem or if the tree was not
+     * constructed by scanning a directory
+     */
+    void computeMissingHashes();
     
     /**
      * Deallocate the entire directory tree

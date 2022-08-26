@@ -280,6 +280,12 @@ string FilesystemElement::typeAsString() const
     }
 }
 
+void FilesystemElement::computeHashIfNeeded(const path& top)
+{
+    if(ty!=file_type::regular || fileHash.empty()==false) return;
+    fileHash=hashFile(top / rp);
+}
+
 bool operator< (const FilesystemElement& a, const FilesystemElement& b)
 {
     // Sort alphabetically (case sensitive) but put directories first
@@ -340,6 +346,12 @@ DirectoryNode& DirectoryNode::addToDirectoryContent(const DirectoryNode& toAdd)
     auto& result=recursiveAdd(*this,toAdd);
     content.sort(); //Keep content sorted
     return result;
+}
+
+void DirectoryNode::computeMissingHashes(const std::filesystem::path& top)
+{
+    elem.computeHashIfNeeded(top);
+    for(auto& n : content) n.computeMissingHashes(top);
 }
 
 DirectoryNode& DirectoryNode::recursiveAdd(DirectoryNode& dst, const DirectoryNode& src)
@@ -446,6 +458,12 @@ void DirectoryTree::writeTo(ostream& os) const
     printBreak=false;
     recursiveWrite(topContent);
     this->os=nullptr;
+}
+
+void DirectoryTree::computeMissingHashes()
+{
+    checkTopPath("computeMissingHashes");
+    for(auto& n : topContent) n.computeMissingHashes(topPath.value());
 }
 
 void DirectoryTree::clear()
