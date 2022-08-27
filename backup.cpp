@@ -155,7 +155,7 @@ private:
 
     DirectoryTree srcTree, dstTree, meta1Tree, meta2Tree;
     const path meta1, meta2;
-    bool srcTreePresent;
+    const bool srcTreePresent;
     bool meta2TreePresent=true;
     bool save=false, meta1NeedsBackup=false, meta2NeedsBackup=false;
 };
@@ -966,7 +966,16 @@ int backup(const path& src, const path& dst, const path& meta1, const path& meta
     {
         cout<<"Computing missing hashes in metadata files... "; cout.flush();
         tm.getMeta1Tree().bindToTopPath(dst);
-        tm.getMeta1Tree().computeMissingHashes();
+        try {
+            tm.getMeta1Tree().computeMissingHashes();
+        } catch(exception& e) {
+            cout<<redb<<"Warning:"<<reset<<" an exception was thrown while"
+                <<"computing missing hashes. The metadata files may be corrupt"
+                <<"in a silent way. Open them and look for an * instead of an"
+                <<"hash for some files. Bit rot protection will not work"
+                <<"for those files.\n";
+            throw;
+        }
         cout<<"Done.\n";
     }
     return result;
