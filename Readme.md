@@ -36,6 +36,19 @@ Also note that you SHOULD NOT MODIFY the content of the source directory while t
 
 The `--fixup` option is optional, if passed, ddm will try to fix the backup directory if problems arise. Note that the process may be interactive, thus requiring user input.
 
+### Updating the backup (fast version)
+
+The default backup command computes the hashes of all files in both the source and backup directory, in order to check all files for bit rot. This is of course slow, so it is also possible to do a fast backup by omitting this bulk hash computation, by means of the `--nohash` option.
+
+```
+ddm backup --nohash --fixup -s srcdir_path/directory -t backup_path/directory backup_path/m1.ddm backup_path/m2.ddm
+```
+
+Note that ddm will still compute the hashes of all the files that have been modified, so as to keep the metadata files up to date with the latest hashes. In this way, it is possible to freely alternate between fast backups with the `--nohash` option and backups with bit rot checks.
+
+It is of course recommended to perform a backup with bit rot check from time to time to prevent bit rot accumulation.
+
+
 ### Scrubbing the backup
 
 If you want to check if the backup is consistent you can do a scrub. The `--fixup` option allows to fix problems if present.
