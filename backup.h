@@ -28,12 +28,15 @@
  * \param opt scan options
  * \param scrTree scanned source directory will be placed here
  * \param dstTree scanned destination directory will be placed here
+ * \param warningCallback warning callback
+ * \throws exception if loading the trees fail
  */
 void scanSourceTargetDir(const std::filesystem::path& src,
                          const std::filesystem::path& dst,
                          bool threads, ScanOpt opt,
                          DirectoryTree& srcTree,
-                         DirectoryTree& dstTree);
+                         DirectoryTree& dstTree,
+                         std::function<void (const std::string&)> warningCallback={});
 
 /**
  * Scrub the backup directory
@@ -82,6 +85,13 @@ int scrub(const std::filesystem::path& src,
  * \param meta1 first copy of the metadata for the destination directory
  * \param meta2 second copy of the metadata for the destination directory
  * \param fixup if true, attempt to fix inconsistencies in the backup directory
+ * \param hashAllFiles if false, don't compute the hash of files when scanning
+ * directories. This greatly speeds up the backup but at the price of not
+ * checking the entire directories for bit rot. Note that when saving metadata
+ * files after a backup, the hashes of only the files that changed are computed
+ * anyway, so as to keep the metadata files with all the necessary information
+ * for future use, so even with this option some hash computation may happen.
+ * It is thus recommended to periodically do a backup with hashAllFiles=true
  * \param threads if true, scan in parallel
  * \param warningCallback warning callback
  * \return 0 if no action was needed,
@@ -92,7 +102,7 @@ int backup(const std::filesystem::path& src,
            const std::filesystem::path& dst,
            const std::filesystem::path& meta1,
            const std::filesystem::path& meta2,
-           bool fixup, bool threads,
+           bool fixup, bool hashAllFiles, bool threads,
            std::function<void (const std::string&)> warningCallback={});
 
 /**

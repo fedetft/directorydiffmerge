@@ -197,7 +197,7 @@ static int backupCmd(variables_map& vm, ostream& out)
     vector<path> inputs;
     if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
 
-    if(vm.count("help") || vm.count("ignore") || vm.count("nohash") ||
+    if(vm.count("help") || vm.count("ignore") ||
        !vm.count("source") || !vm.count("target") ||
        (inputs.size()!=0 && inputs.size()!=2))
     {
@@ -212,8 +212,8 @@ ddm backup -s <dir> -t <dir> <met> <met>    # Backup and update bit rot copies
 
     if(inputs.size()==2)
         return backup(vm["source"].as<path>(),vm["target"].as<path>(),
-                     inputs.at(0),inputs.at(1),vm.count("fixup"),
-                     !vm.count("singlethread"),printWarning);
+                      inputs.at(0),inputs.at(1),vm.count("fixup"),
+                      !vm.count("nohash"),!vm.count("singlethread"),printWarning);
     else
         return backup(vm["source"].as<path>(),vm["target"].as<path>(),
                       !vm.count("singlethread"),printWarning);

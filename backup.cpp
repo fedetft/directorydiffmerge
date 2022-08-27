@@ -24,6 +24,203 @@
 using namespace std;
 using namespace std::filesystem;
 
+/**
+ * This helper class handles loading the directory trees in memory needed for
+ * doing backups, and handles the logic behind saving metadata files.
+ */
+class TreeManager
+{
+public:
+    /**
+     * Constructor with source tree. Scan source and backup directories, and
+     * load metadata files.
+     * \param src source directory path (directory to be backed up)
+     * \param dst destination (backup) directory path
+     * \param meta1 first copy of the metadata for the destination directory
+     * \param meta2 second copy of the metadata for the destination directory
+     * \param opt scan options
+     * \param threads if true, scan in parallel
+     * \param warningCallback warning callback
+     * \throws exception if scanning or loading fails
+     */
+    TreeManager(const path& src, const path& dst, const path& meta1,
+                const path& meta2, ScanOpt opt, bool threads,
+                function<void (const string&)> warningCallback)
+        : meta1(meta1), meta2(meta2), srcTreePresent(true)
+    {
+        loadMetadataFiles(meta1Tree,meta2Tree,meta1,meta2,warningCallback);
+        scanSourceTargetDir(src,dst,threads,opt,srcTree,dstTree,warningCallback);
+    }
+
+    /**
+     * Constructor without source tree. Scan only backup directories, and
+     * load metadata files.
+     * \param dst destination (backup) directory path
+     * \param meta1 first copy of the metadata for the destination directory
+     * \param meta2 second copy of the metadata for the destination directory
+     * \param opt scan options
+     * \param warningCallback warning callback
+     * \throws exception if scanning or loading fails
+     */
+    TreeManager(const path& dst, const path& meta1, const path& meta2,
+                ScanOpt opt, function<void (const string&)> warningCallback)
+        : meta1(meta1), meta2(meta2), srcTreePresent(false)
+    {
+        loadMetadataFiles(meta1Tree,meta2Tree,meta1,meta2,warningCallback);
+        cout<<"Scanning backup directory... "; cout.flush();
+        if(warningCallback) dstTree.setWarningCallback(warningCallback);
+        dstTree.scanDirectory(dst,opt);
+        cout<<"Done.\n";
+    }
+
+    /**
+     * \return true if the TreeManager was constructed with the source directory
+     */
+    bool hasSourceTree() const { return srcTreePresent; }
+
+    /**
+     * \return the source directory tree, can only be called if hasSourceTree()==true
+     */
+    const DirectoryTree& getSrcTree() const
+    {
+        assert(srcTreePresent);
+        return srcTree;
+    }
+
+    /**
+     * \return the backup directory tree
+     */
+    DirectoryTree& getDstTree() { return dstTree; }
+
+    /**
+     * \return the first metadata directory tree
+     */
+    DirectoryTree& getMeta1Tree() { return meta1Tree; }
+
+    /**
+     * \return the second metadata directory tree.
+     * After a call to discardMeta2Tree() can no longer be called.
+     */
+    DirectoryTree& getMeta2Tree()
+    {
+        assert(meta2TreePresent);
+        return meta2Tree;
+    }
+
+    /**
+     * Discard the second metadata tree after scrubbing to save memory.
+     * When saving metadata files, the first tree is saved to both files.
+     */
+    void discardMeta2Tree()
+    {
+        meta2Tree.clear();
+        meta2TreePresent=false;
+    }
+
+    /**
+     * If called, when this object is destructed, the metadata files will
+     * be saved to disk
+     */
+    void saveMetadataOnExit() { save=true; }
+
+    /**
+     * If called and saveMetadataOnExit() is called too, when this object is
+     * destructed a backup copy of the first metadata file will be kept
+     */
+    void saveMeta1PreviousVersion() { meta1NeedsBackup=true; }
+
+    /**
+     * If called and saveMetadataOnExit() is called too, when this object is
+     * destructed a backup copy of the second metadata file will be kept
+     */
+    void saveMeta2PreviousVersion() { meta2NeedsBackup=true; }
+
+    /**
+     * Destructor, saves metadata files to disk if saveMetadataOnExit() has
+     * been called
+     */
+    ~TreeManager();
+
+private:
+    /**
+     * \param meta1Tree first metadata file will be loaded here
+     * \param meta2Tree first metadata file will be loaded here
+     * \param meta1 path to first copy of the metadata path
+     * \param meta2 path to second copy of the metadata path
+     * \param warningCallback warning callback
+     */
+    void loadMetadataFiles(DirectoryTree& meta1Tree, DirectoryTree& meta2Tree,
+                       const path& meta1, const path& meta2,
+                       function<void (const string&)> warningCallback);
+
+    DirectoryTree srcTree, dstTree, meta1Tree, meta2Tree;
+    const path meta1, meta2;
+    bool srcTreePresent;
+    bool meta2TreePresent=true;
+    bool save=false, meta1NeedsBackup=false, meta2NeedsBackup=false;
+};
+
+void TreeManager::loadMetadataFiles(DirectoryTree& meta1Tree,
+    DirectoryTree& meta2Tree, const path& meta1, const path& meta2,
+    function<void (const string&)> warningCallback) try
+{
+    cout<<"Loading metatata files... "; cout.flush();
+    if(warningCallback) meta1Tree.setWarningCallback(warningCallback);
+    if(warningCallback) meta2Tree.setWarningCallback(warningCallback);
+    meta1Tree.readFrom(meta1);
+    meta2Tree.readFrom(meta2);
+    cout<<"Done.\n";
+} catch(exception& e) {
+    cout<<e.what()<<"\nIt looks like at least one of the metadata files is "
+        <<"corrupted to the point that it cannot be read. The cause may be "
+        <<"an unclean unmount of the filesystem (did you run an fsck?), "
+        <<"you tried to edit a metadata file with a text editor or "
+        <<"bit rot occurred in a metadata file.\n"
+        <<redb<<"Unrecoverable inconsistencies found."<<reset<<" You will "
+        <<"need to manually fix the backup directory, possibly by "
+        <<"recreating metadata files and replacing the corrupted one(s).\n"
+        <<"the 'ddm diff' command may help to troubleshoot bad metadata.\n";
+    throw;
+}
+
+TreeManager::~TreeManager()
+{
+    if(save==false) return;
+    cout<<"Updating metadata file 1\n";
+    if(meta1NeedsBackup)
+    {
+        auto meta1bak=meta1;
+        meta1bak+=".bak";
+        rename(meta1,meta1bak);
+    }
+    meta1Tree.writeTo(meta1);
+    cout<<"Updating metadata file 2\n";
+    if(meta2NeedsBackup)
+    {
+        auto meta2bak=meta2;
+        meta2bak+=".bak";
+        rename(meta2,meta2bak);
+    }
+    if(meta2TreePresent) meta2Tree.writeTo(meta2);
+    else meta1Tree.writeTo(meta2); //Not a mistake, write meta1Tree to both files
+}
+
+/**
+ * Get a yes/no answer from the user
+ * \return true if the user entered 'y'
+ */
+static bool askYesNo()
+{
+    char c;
+    do {
+        c=tolower(cin.get());
+    } while(c!='y' && c!='n');
+    return c=='y';
+}
+
+/**
+ * Return value of tryToFixBackupEntry
+ */
 enum class FixupResult
 {
     Failed,
@@ -32,15 +229,6 @@ enum class FixupResult
     SuccessMetadataInvalidated,
     SuccessDiffMetadataInvalidated
 };
-
-bool askYesNo()
-{
-    char c;
-    do {
-        c=tolower(cin.get());
-    } while(c!='y' && c!='n');
-    return c=='y';
-}
 
 /**
  * Try to fix an inconsistent backup state found during a scrub.
@@ -414,45 +602,21 @@ static FixupResult fixMetadataEntry(DirectoryTree& goodTree,
 }
 
 /**
- * Implementation code that scrubs only the backup directory
- * \param srcTree freshly scanned metadata for src
- * NOTE: may be nullptr if source dir not given by the user
- * \param dstTree freshly scanned metadata for dst
- * \param meta1 first copy of the metadata path
- * \param meta2 second copy of the metadata path
+ * Implementation code that scrubs the backup directory
+ * \param tm the tree manager containing:
+ * - freshly scanned metadata tree for src (optional)
+ * - freshly scanned metadata tree for dst
+ * - first copy of the metadata tree
+ * - second copy of the metadata tree
  * \param fixup if true, attempt to fix inconsistencies in the backup directory
- * \param warningCallback warning callback
  * \return 0 if no action was needed,
  *         1 if recoverable errors found and fixed
  *         2 if unrecoverable errors found
  */
-static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
-                     const path& meta1, const path& meta2, bool fixup,
-                     function<void (const string&)> warningCallback)
+static int scrubImpl(TreeManager& tm, bool fixup)
 {
-    cout<<"Loading metatata files... "; cout.flush();
-    DirectoryTree meta1Tree, meta2Tree;
-    try {
-        if(warningCallback) meta1Tree.setWarningCallback(warningCallback);
-        if(warningCallback) meta2Tree.setWarningCallback(warningCallback);
-        meta1Tree.readFrom(meta1);
-        meta2Tree.readFrom(meta2);
-        cout<<"Done.\n";
-    } catch(exception& e) {
-        cout<<e.what()<<"\nIt looks like at least one of the metadata files is "
-            <<"corrupted to the point that it cannot be read. The cause may be "
-            <<"an unclean unmount of the filesystem (did you run an fsck?), "
-            <<"you tried to edit a metadata file with a text editor or "
-            <<"bit rot occurred in a metadata file.\n"
-            <<redb<<"Unrecoverable inconsistencies found."<<reset<<" You will "
-            <<"need to manually fix the backup directory, possibly by "
-            <<"recreating metadata files and replacing the corrupted one(s).\n"
-            <<"the 'ddm diff' command may help to troubleshoot bad metadata.\n";
-        return 2;
-    }
-
     cout<<"Comparing backup directory with metadata... "; cout.flush();
-    auto diff=diff3(dstTree,meta1Tree,meta2Tree);
+    auto diff=diff3(tm.getDstTree(),tm.getMeta1Tree(),tm.getMeta2Tree());
     cout<<"Done.\n";
 
     if(diff.empty())
@@ -472,7 +636,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
             cout<<"\nThe fixup operation modified the backup directory content "
                 <<"in a way that invalidated the list of inconsistencies. Rechecking.\n"
                 <<"Comparing backup directory with metadata... "; cout.flush();
-            diff=diff3(dstTree,meta1Tree,meta2Tree);
+            diff=diff3(tm.getDstTree(),tm.getMeta1Tree(),tm.getMeta2Tree());
             cout<<"Done.\n";
         }
         for(auto& d : diff)
@@ -483,7 +647,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
             if(d[0]==d[1] && d[0]!=d[2])
             {
                 cout<<d<<"Assuming metadata file 2 inconsistent in this case.\n";
-                auto result=fixMetadataEntry(dstTree,meta2Tree,d[0],d[2]);
+                auto result=fixMetadataEntry(tm.getDstTree(),tm.getMeta2Tree(),d[0],d[2]);
                 updateMeta2=true;
                 if(result==FixupResult::SuccessDiffMetadataInvalidated)
                 {
@@ -492,7 +656,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
                 }
             } else if(d[0]==d[2] && d[0]!=d[1]) {
                 cout<<d<<"Assuming metadata file 1 inconsistent in this case.\n";
-                auto result=fixMetadataEntry(dstTree,meta1Tree,d[0],d[1]);
+                auto result=fixMetadataEntry(tm.getDstTree(),tm.getMeta1Tree(),d[0],d[1]);
                 updateMeta1=true;
                 if(result==FixupResult::SuccessDiffMetadataInvalidated)
                 {
@@ -505,7 +669,11 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
                 if(fixup)
                 {
                     cout<<"Trying to fix this.\n";
-                    auto result=tryToFixBackupEntry(srcTree,dstTree,meta1Tree,meta2Tree,d);
+                    const DirectoryTree *src=nullptr;
+                    if(tm.hasSourceTree()) src=&tm.getSrcTree();
+                    auto result=tryToFixBackupEntry(src,tm.getDstTree(),
+                                                    tm.getMeta1Tree(),
+                                                    tm.getMeta2Tree(),d);
                     switch(result)
                     {
                         case FixupResult::Success:
@@ -541,22 +709,9 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
 
     if(unrecoverable==false && maybeRecoverable==false)
     {
-        if(updateMeta1)
-        {
-            cout<<"Updating metadata file 1\n";
-            auto meta1bak=meta1;
-            meta1bak+=".bak";
-            rename(meta1,meta1bak);
-            meta1Tree.writeTo(meta1);
-        }
-        if(updateMeta2)
-        {
-            cout<<"updating metadata file 2\n";
-            auto meta2bak=meta2;
-            meta2bak+=".bak";
-            rename(meta2,meta2bak);
-            meta2Tree.writeTo(meta2);
-        }
+        tm.saveMetadataOnExit();
+        if(updateMeta1) tm.saveMeta1PreviousVersion();
+        if(updateMeta2) tm.saveMeta2PreviousVersion();
         cout<<yellowb<<"Inconsitencies found"<<reset<<" but it was possible to "
             <<"automatically reconcile them.\nBackup directory is now good.\n";
         return 1;
@@ -567,7 +722,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
         {
             cout<<"Some inconsistencies may be automatically recoverable by "
                 <<"running again this command with the --fixup option.\n";
-            if(srcTree==nullptr)
+            if(tm.hasSourceTree()==false)
                 cout<<"You may want to give me access to the source diectory "
                     <<"as well (-s option)\n";
         }
@@ -577,7 +732,7 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
             <<"looks like it is possible to attempt recovering all "
             <<"inconsistencies automatically by running this command again "
             <<"and adding the --fixup option.\n";
-        if(srcTree==nullptr)
+        if(tm.hasSourceTree()==false)
             cout<<"You may want to give me access to the source diectory "
                 <<"as well (-s option)\n";
         return 2;
@@ -585,8 +740,12 @@ static int scrubImpl(const DirectoryTree *srcTree, DirectoryTree& dstTree,
 }
 
 void scanSourceTargetDir(const path& src, const path& dst, bool threads,
-    ScanOpt opt, DirectoryTree& srcTree, DirectoryTree& dstTree)
+    ScanOpt opt, DirectoryTree& srcTree, DirectoryTree& dstTree,
+    function<void (const string&)> warningCallback)
 {
+    cout<<"Scanning source and backup directory... "; cout.flush();
+    if(warningCallback) srcTree.setWarningCallback(warningCallback);
+    if(warningCallback) dstTree.setWarningCallback(warningCallback);
     if(threads)
     {
         string foregroundException;
@@ -615,19 +774,16 @@ void scanSourceTargetDir(const path& src, const path& dst, bool threads,
         srcTree.scanDirectory(src,opt);
         dstTree.scanDirectory(dst,opt);
     }
+    cout<<"Done.\n";
 }
 
 int scrub(const path& dst, const path& meta1, const path& meta2, bool fixup,
           function<void (const string&)> warningCallback)
 {
     cout<<"Scrubbing backup directory "<<dst<<"\n"
-        <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
-        <<"Scanning backup directory... "; cout.flush();
-    DirectoryTree dstTree;
-    if(warningCallback) dstTree.setWarningCallback(warningCallback);
-    dstTree.scanDirectory(dst);
-    cout<<"Done.\n";
-    return scrubImpl(nullptr,dstTree,meta1,meta2,fixup,warningCallback);
+        <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n";
+    TreeManager tm(dst,meta1,meta2,ScanOpt::ComputeHash,warningCallback);
+    return scrubImpl(tm,fixup);
 }
 
 int scrub(const path& src, const path& dst, const path& meta1, const path& meta2,
@@ -635,20 +791,23 @@ int scrub(const path& src, const path& dst, const path& meta1, const path& meta2
 {
     cout<<"Scrubbing backup directory "<<dst<<"\n"
         <<"by comparing it with metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
-        <<"and with source directory "<<src<<"\n"
-        <<"Scanning source and backup directory... "; cout.flush();
-    DirectoryTree srcTree, dstTree;
-    if(warningCallback) srcTree.setWarningCallback(warningCallback);
-    if(warningCallback) dstTree.setWarningCallback(warningCallback);
-    scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
-    cout<<"Done.\n";
-    return scrubImpl(&srcTree,dstTree,meta1,meta2,fixup,warningCallback);
+        <<"and with source directory "<<src<<"\n";
+    TreeManager tm(src,dst,meta1,meta2,ScanOpt::ComputeHash,threads,warningCallback);
+    return scrubImpl(tm,fixup);
 }
 
 /**
- * TODO document me
+ * Perform a backup by comparing the source and target directories, and applying
+ * differences so the target directory becomes equal to the source
+ * \param scrTree source directory
+ * \param dstTree backup directory
+ * \param metaTree optional metadata tree
+ * \return 0 on success,
+ *         1 if recoverable errors found and fixed
+ *         2 if unrecoverable errors found
  */
-static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
+static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree,
+                      DirectoryTree *metaTree=nullptr)
 {
     cout<<"Performing backup.\n"
         <<"Comparing source directory with backup directory... "; cout.flush();
@@ -668,11 +827,13 @@ static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
             cout<<"- Removing "<<d[1].value().typeAsString()<<" "<<relPath
                 <<" from backup directory.\n";
             dstTree.removeFromTreeAndFilesystem(relPath);
+            if(metaTree) metaTree->removeFromTree(relPath);
         } else if(!d[1]) {
             path relPath=d[0].value().relativePath();
             cout<<"- Copying "<<d[0].value().typeAsString()<<" "<<relPath
                 <<" to backup directory.\n";
             dstTree.copyFromTreeAndFilesystem(srcTree,relPath,relPath.parent_path());
+            if(metaTree) metaTree->copyFromTree(srcTree,relPath,relPath.parent_path());
         } else {
             path relPath=d[0].value().relativePath();
             CompareOpt opt;
@@ -688,6 +849,7 @@ static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
                 {
                     auto perm=d[0].value().permissions();
                     dstTree.modifyPermissionsInTreeAndFilesystem(relPath,perm);
+                    if(metaTree) metaTree->modifyPermissionsInTree(relPath,perm);
                 }
                 if(d[0].value().user()!=d[1].value().user() ||
                     d[0].value().group()!=d[1].value().group())
@@ -695,11 +857,13 @@ static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
                     auto u=d[0].value().user();
                     auto g=d[0].value().group();
                     dstTree.modifyOwnerInTreeAndFilesystem(relPath,u,g);
+                    if(metaTree) metaTree->modifyOwnerInTree(relPath,u,g);
                 }
                 if(d[0].value().mtime()!=d[1].value().mtime())
                 {
                     auto mtime=d[0].value().mtime();
                     dstTree.modifyMtimeInTreeAndFilesystem(relPath,mtime);
+                    if(metaTree) metaTree->modifyMtimeInTree(relPath,mtime);
                 }
             } else {
                 CompareOpt opt;
@@ -743,6 +907,12 @@ static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
                         dstTree.removeFromTreeAndFilesystem(relPath);
                         dstTree.copyFromTreeAndFilesystem(srcTree,relPath,
                                                           relPath.parent_path());
+                        if(metaTree)
+                        {
+                            metaTree->removeFromTree(relPath);
+                            metaTree->copyFromTree(srcTree,relPath,
+                                                  relPath.parent_path());
+                        }
                     }
                 }
             }
@@ -761,17 +931,15 @@ static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree)
 }
 
 int backup(const path& src, const path& dst, const path& meta1, const path& meta2,
-           bool fixup, bool threads, function<void (const string&)> warningCallback)
+           bool fixup, bool hashAllFiles, bool threads,
+           function<void (const string&)> warningCallback)
 {
     cout<<"Backing up directory "<<src<<"\nto directory "<<dst<<"\n"
-        <<"and metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n"
-        <<"Scanning source and backup directory... "; cout.flush();
-    DirectoryTree srcTree, dstTree;
-    if(warningCallback) srcTree.setWarningCallback(warningCallback);
-    if(warningCallback) dstTree.setWarningCallback(warningCallback);
-    scanSourceTargetDir(src,dst,threads,ScanOpt::ComputeHash,srcTree,dstTree);
-    cout<<"Done.\nScrubbing backup directory.\n";
-    int result=scrubImpl(&srcTree,dstTree,meta1,meta2,fixup,warningCallback);
+        <<"and metadata files:\n- "<<meta1<<"\n- "<<meta2<<"\n";
+    ScanOpt opt=hashAllFiles ? ScanOpt::ComputeHash : ScanOpt::OmitHash;
+    TreeManager tm(src,dst,meta1,meta2,opt,threads,warningCallback);
+    cout<<"Scrubbing backup directory.\n";
+    int result=scrubImpl(tm,fixup);
     switch(result)
     {
         case 1:
@@ -783,23 +951,33 @@ int backup(const path& src, const path& dst, const path& meta1, const path& meta
                 <<reset<<"\n";
             return result;
     }
-    int result2=backupImpl(srcTree,dstTree);
+    //NOTE: after the scrub the two metadata trees are consistent, so only keep
+    //one to save RAM. Note that even though both metadata trees should be also
+    //consistent with the dstTree (which would suggest we can clear both), this
+    //is not the case as when hashAllFiles is false, the dstTree has no hashes
+    //for all unmodified files, while the metadata trees have them, so we need
+    //one metadata tree in order to not lose hashes when writing the updated
+    //metadata files
+    tm.discardMeta2Tree();
+    tm.saveMetadataOnExit();
+    int result2=backupImpl(tm.getSrcTree(),tm.getDstTree(),&tm.getMeta1Tree());
     if(result2!=0) result=result2;
-    cout<<"Updating metadata files.\n";
-    dstTree.writeTo(meta1);
-    dstTree.writeTo(meta2);
+    if(hashAllFiles==false)
+    {
+        cout<<"Computing missing hashes in metadata files... "; cout.flush();
+        tm.getMeta1Tree().bindToTopPath(dst);
+        tm.getMeta1Tree().computeMissingHashes();
+        cout<<"Done.\n";
+    }
     return result;
 }
 
 int backup(const path& src, const path& dst, bool threads,
            function<void (const string&)> warningCallback)
 {
-    cout<<"Backing up directory "<<src<<"\nto directory "<<dst<<"\n"
-        <<"Scanning source and backup directory... "; cout.flush();
+    cout<<"Backing up directory "<<src<<"\nto directory "<<dst<<"\n";
     DirectoryTree srcTree, dstTree;
-    if(warningCallback) srcTree.setWarningCallback(warningCallback);
-    if(warningCallback) dstTree.setWarningCallback(warningCallback);
-    scanSourceTargetDir(src,dst,threads,ScanOpt::OmitHash,srcTree,dstTree);
-    cout<<"Done.\n";
+    scanSourceTargetDir(src,dst,threads,ScanOpt::OmitHash,srcTree,dstTree,
+                        warningCallback);
     return backupImpl(srcTree,dstTree);
 }
