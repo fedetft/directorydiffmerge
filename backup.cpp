@@ -839,7 +839,20 @@ static int backupImpl(const DirectoryTree& srcTree, DirectoryTree& dstTree,
             CompareOpt opt;
             opt.perm=false;
             opt.owner=false;
-            opt.mtime=false;
+            if(d[0].value().type()!=file_type::regular ||
+               d[1].value().type()!=file_type::regular)
+            {
+                opt.mtime=false; //The issue below applies only to regular files
+            } else {
+                //NOTE: when doing a backup with full hash computation if the
+                //files differ only by the mtime, we can detect the hashes are
+                //the same and only modify the mtime. When hash computation is
+                //omitted, however, we must treat files with different mtime as
+                //modified and do a full file copy otherwise if a file changed
+                //but its size remained the same it will not be backed up!
+                if(d[0].value().hash().empty()==false &&
+                   d[1].value().hash().empty()==false) opt.mtime=false;
+            }
             if(compare(d[0].value(),d[1].value(),opt))
             {
                 cout<<"- Updating the metadata of the "
