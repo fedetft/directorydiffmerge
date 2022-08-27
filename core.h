@@ -471,7 +471,7 @@ public:
      */
     void bindToTopPath(const std::filesystem::path& topPath)
     {
-        this->topPath=topPath;
+        this->topPath=absolute(topPath);
     }
 
     /**
