@@ -18,8 +18,15 @@ add_executable(ddm ${DDM_SRCS})
 
 find_package(Threads REQUIRED)
 target_link_libraries(ddm ${CMAKE_THREAD_LIBS_INIT})
+
+find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/sha.h crypto++/sha.h)
+if(EXISTS ${CRYPTOPP_INCLUDE_DIR}/cryptopp/sha.h)
+    add_definitions(-DCRYPTOPP_NAMING)
+endif()
+
 find_library(CRYPTOPP cryptopp)
 target_link_libraries(ddm ${CRYPTOPP})
+
 set(BOOST_LIBS program_options)
 find_package(Boost COMPONENTS ${BOOST_LIBS} REQUIRED)
 target_link_libraries(ddm ${Boost_LIBRARIES})
