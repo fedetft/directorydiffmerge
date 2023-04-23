@@ -19,10 +19,7 @@
 #include <cassert>
 #include <iomanip>
 #include <unordered_set>
-#include <crypto++/sha.h>
-#include <crypto++/hex.h>
-#include <crypto++/files.h>
-#include <crypto++/filters.h>
+#include "cryptopp.h"
 #include "extfs.h"
 #include "core.h"
 
