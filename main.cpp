@@ -82,8 +82,8 @@ static void printWarning(const string& message)
  */
 static int lsCmd(variables_map& vm, ostream& out)
 {
-    vector<path> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
+    vector<string> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
 
     if(vm.count("help")   || vm.count("source") || vm.count("target")
     || vm.count("ignore") || vm.count("fixup")  || inputs.size()>1)
@@ -100,7 +100,7 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
     ScanOpt opt=vm.count("nohash") ? ScanOpt::OmitHash : ScanOpt::ComputeHash;
     DirectoryTree dt;
     dt.setWarningCallback(printWarning);
-    dt.scanDirectory(inputs.empty() ? "." : inputs.at(0), opt);
+    dt.scanDirectory(inputs.empty() ? "." : path(inputs.at(0)), opt);
     out<<dt;
     return 0;
 }
@@ -110,8 +110,8 @@ ddm ls <dir> -o <met>               # List directory, write metadata to file
  */
 static int diffCmd(variables_map& vm, ostream& out)
 {
-    vector<path> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
+    vector<string> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
 
     if(vm.count("help")  || vm.count("source") || vm.count("target")
     || vm.count("fixup") || inputs.size()<2 || inputs.size()>3)
@@ -136,8 +136,8 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
         DirectoryTree a,b;
         a.setWarningCallback(printWarning);
         b.setWarningCallback(printWarning);
-        a.fromPath(inputs.at(0),sopt);
-        b.fromPath(inputs.at(1),sopt);
+        a.fromPath(path(inputs.at(0)),sopt);
+        b.fromPath(path(inputs.at(1)),sopt);
         auto diff=diff2(a,b,copt);
         out<<diff;
         return diff.size()==0 ? 0 : 1; //Allow to check if differences found
@@ -146,9 +146,9 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
         a.setWarningCallback(printWarning);
         b.setWarningCallback(printWarning);
         c.setWarningCallback(printWarning);
-        a.fromPath(inputs.at(0),sopt);
-        b.fromPath(inputs.at(1),sopt);
-        c.fromPath(inputs.at(2),sopt);
+        a.fromPath(path(inputs.at(0)),sopt);
+        b.fromPath(path(inputs.at(1)),sopt);
+        c.fromPath(path(inputs.at(2)),sopt);
         auto diff=diff3(a,b,c,copt);
         out<<diff;
         return diff.size()==0 ? 0 : 1; //Allow to check if differences found
@@ -160,8 +160,8 @@ ddm diff <d|m> <d|m> <d|m>          # Three way diff, write stdout
  */
 static int scrubCmd(variables_map& vm, ostream& out)
 {
-    vector<path> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
+    vector<string> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
 
     bool err=true;
     if(!vm.count("help") && !vm.count("ignore") && !vm.count("nohash"))
@@ -183,12 +183,12 @@ ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
     }
 
     if(vm.count("source") && vm.count("target"))
-        return scrub(vm["source"].as<path>(),vm["target"].as<path>(),
-                     inputs.at(0),inputs.at(1),vm.count("fixup"),
+        return scrub(path(vm["source"].as<string>()),path(vm["target"].as<string>()),
+                     path(inputs.at(0)),path(inputs.at(1)),vm.count("fixup"),
                      !vm.count("singlethread"),printWarning);
     else
-        return scrub(inputs.at(0),inputs.at(1),inputs.at(2),vm.count("fixup"),
-                     printWarning);
+        return scrub(path(inputs.at(0)),path(inputs.at(1)),path(inputs.at(2)),
+                     vm.count("fixup"),printWarning);
 }
 
 /**
@@ -196,8 +196,8 @@ ddm scrub -s <dir> -t <dir> <met> <met> # Check for bit rot, correct if possible
  */
 static int backupCmd(variables_map& vm, ostream& out)
 {
-    vector<path> inputs;
-    if(vm.count("input")) inputs=vm["input"].as<vector<path>>();
+    vector<string> inputs;
+    if(vm.count("input")) inputs=vm["input"].as<vector<string>>();
 
     if(vm.count("help") || vm.count("ignore") ||
        !vm.count("source") || !vm.count("target") ||
@@ -213,48 +213,45 @@ ddm backup -s <dir> -t <dir> <met> <met>    # Backup and update bit rot copies
     }
 
     if(inputs.size()==2)
-        return backup(vm["source"].as<path>(),vm["target"].as<path>(),
-                      inputs.at(0),inputs.at(1),vm.count("fixup"),
+        return backup(path(vm["source"].as<string>()),path(vm["target"].as<string>()),
+                      path(inputs.at(0)),path(inputs.at(1)),vm.count("fixup"),
                       !vm.count("nohash"),!vm.count("singlethread"),printWarning);
     else
-        return backup(vm["source"].as<path>(),vm["target"].as<path>(),
+        return backup(path(vm["source"].as<string>()),path(vm["target"].as<string>()),
                       !vm.count("singlethread"),printWarning);
 }
 
 int main(int argc, char *argv[]) try
 {
-    //Basic sanity check
-    if(argc<2) help();
-
-    //Force program_options to treat the first option separately as program name
-    argc--;
-    argv++;
-
     //Parse command line
+    //NOTE: using value<string>() instead of value<path>() as the latter breaks
+    //for path with spaces
     options_description desc("options");
     desc.add_options()
         ("help,h",   "prints this")
-        ("source,s", value<path>(), "source")
-        ("target,t", value<path>(), "target")
+        ("command",  value<string>(), "")//Hidden: command: ls,diff,scrub,backup
+        ("source,s", value<string>(), "source")
+        ("target,t", value<string>(), "target")
         ("ignore,i", value<string>(), "ignore")
-        ("output,o", value<path>(), "output")
+        ("output,o", value<string>(), "output")
         ("nohash,n", "omit hash computation")
         ("fixup",    "attempt to fixup backup directory if scrub finds issues")
         ("singlethread", "don't scan source and target dir in separate threads")
-        ("input",    value<vector<path>>(), "input") //Positional catch-all
+        ("input",    value<vector<string>>(), "") //Hidden: positional catch-all
     ;
     positional_options_description p;
-    p.add("input", -1);
+    p.add("command", 1).add("input", -1);
     variables_map vm;
     store(command_line_parser(argc,argv).options(desc).positional(p).run(),vm);
     notify(vm);
+    if(!vm.count("command")) help();
 
     //Handle redirecting output to file
     ostream *out=&cout;
     ofstream outfile;
     if(vm.count("output"))
     {
-        auto outFileName=vm["output"].as<path>();
+        path outFileName=vm["output"].as<string>();
         if(exists(outFileName))
         {
             cerr<<redb<<"Output file "<<outFileName
@@ -278,7 +275,7 @@ int main(int argc, char *argv[]) try
         {"scrub",  scrubCmd},
         {"backup", backupCmd},
     };
-    auto it=operations.find(argv[0]);
+    auto it=operations.find(vm["command"].as<string>());
     if(it==operations.end()) help();
     return it->second(vm,*out);
 } catch(exception& e) {
