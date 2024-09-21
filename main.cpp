@@ -28,12 +28,14 @@ using namespace std;
 using namespace std::filesystem;
 using namespace boost::program_options;
 
+static const std::string version="1.00";
+
 /**
  * Print help and terminate the program
  */
 static void help()
 {
-    cerr<<R"(ddm: DirectoryDiffMerge tool
+    cerr<<"ddm: DirectoryDiffMerge tool version "<<version<<R"(
 
 Legend:
 <dir> : directory

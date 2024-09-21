@@ -1,16 +1,55 @@
 # DDM: The DirectoryDiffMerge tool
 
-Currently in alpha release. TODO: write better documentation.
+Version 1.00.
+
+ddm is a generic tool designed to compare directory trees as opposed to lines
+inside files. Although tools primarily targeted at files such as diff can
+compare entire directories, ddm improves upon the use of file-based diff tools
+in key areas:
+
+- ddm also compares file metadata. When comparing directories, ddm can tell
+you if files differ in their owner, group, permissions, last modified time and
+more. Of course, you can freely mask any metadata you don't want to compare
+for fine grain control of your comparisons.
+- ddm is aware of the directory structure. Indeed, ddm internally compares
+directory trees instead of lists of files. This leads to more meaningful, less
+cluttered output. Assume for example you are comparing two directory trees and
+only one of those incudes a directory with thousands of files. Standard diffing
+tool such as diff will report every single file as different, while ddm just
+reports you that a directory is missing.
+
+ddm is based on an internal representation of a directory tree and its metadata.
+This representation has an in-memory form, used internally by the tool, and a
+printable form that the ddm tool cam produce as an output, as well as accept as
+input. You can produce a metadata file from a directory with the `ddm ls` option.
+Indeed, when comparing directories, ddm interchangebly accepts either a path to
+a directory in your filesystem or a ddm metadata file.
+This option opens up many possibilities such as comparing a directory with a
+previous version without the need to save a copy of the entire directory and
+all the contained files, or to compare two directories on separate machines by
+only transfering the metadata file.
+
+ddm can compare directories with the `ddm diff` option.
+It can perform two and three way comparisons between directories.
+
+ddm is not limited to comparing directories.
+After the comparison, it can also change the content of a target directory to
+make it equal to a source directory.
+This makes ddm useful as a backup tool, for this reason this option is
+called `ddm backup`.
+
 
 ## Use as backup tool
 
-ddm uses two metadata files stored in the backup path to have triple redundancy
-for metadata, and single redundancy for data. Of course, since this is a backup,
+ddm can use two metadata files stored in the backup path to have triple redundancy
+for metadata, and single redundancy for data.
+This is the recommended way to use ddm for backups. Of course, since this is a backup,
 a second copy of the data is the source directory itself, so if the single backup
 copy becomes corrupted, ddm can fix the backup by taking the corrupted files from
 the source directory.
 
-ddm implements bit rot detction for both the source and backup directory. TODO: document me
+When performing backup with triple metadata redundancy, ddm implements bit rot
+detction for both the source and backup directory.
 
 ### Initializing the backup
 
@@ -30,6 +69,7 @@ Once the backup has been created, you can back up your source directory any time
 ddm backup --fixup -s srcdir_path/directory -t backup_path/directory backup_path/m1.ddm backup_path/m2.ddm
 ```
 
+It is best to write the command in a shell script file to use it every time you want to update the backup.
 DO NOT swap the source and backup directories! Remeber, `-s` stands for source directory, where ddm will READ, and `-t` stands for target directory, where ddm will WRITE.
 
 Also note that you SHOULD NOT MODIFY the content of the source directory while the backup is in progress.
@@ -62,3 +102,13 @@ Or if you don't have currently access to the source directory you can use this v
 ```
 ddm scrub --fixup backup_path/directory backup_path/m1.ddm backup_path/m2.ddm
 ```
+
+## Design limitations
+
+The current version of ddm has the following design limitations:
+
+- ddm does not handle hardlinks. ddm will print a warning if files with multiple hardlinks are found, and will treat multiple hardlinks to the same file as separate files. If preserving the hardlink struture is unimportant to you, you can ignore the warning.
+- ddm will not handle special file types such as named pipes or sockets. These kind of files usually don't appear in user directories, which is the primary application for ddm. When comparing directories that include those special file types a warning will be printed that they can't be properly compared. Backup of directories including special file types is not supported.
+- ddm will print warnings for files and directories it can't read for permission reasons. This isn't really a limitation, if the directory you're comparing includes files the user ddm is launched as can't read, then you should run ddm as root or as an appropriate user.
+
+
