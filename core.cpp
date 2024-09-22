@@ -600,7 +600,7 @@ void DirectoryTree::modifyOwnerInTree(const path& relativePath,
 void DirectoryTree::modifyOwnerInTreeAndFilesystem(const path& relativePath,
                                                    const string& user, const string& group)
 {
-    checkTopPath("modifyUserInTreeAndFilesystem");
+    checkTopPath("modifyOwnerInTreeAndFilesystem");
     modifyOwnerInTree(relativePath,user,group);
     path absPath=topPath.value() / relativePath;
     //Don't consider owner/group setting failure an error
