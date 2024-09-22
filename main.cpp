@@ -28,7 +28,7 @@ using namespace std;
 using namespace std::filesystem;
 using namespace boost::program_options;
 
-static const std::string version="1.00";
+static const std::string version="1.01";
 
 /**
  * Print help and terminate the program
